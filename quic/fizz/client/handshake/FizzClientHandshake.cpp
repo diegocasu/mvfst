@@ -269,6 +269,12 @@ class FizzClientHandshake::ActionMoveVisitor {
             client_.computeCiphers(
                 CipherKind::ZeroRttWrite,
                 folly::range(secretAvailable.secret.secret));
+            if (client_.getKeyLogWriter()) {
+              client_.getKeyLogWriter()->write(
+                  client_.state_.clientRandom().value(),
+                  QuicKeyLogWriter::Label::CLIENT_EARLY_TRAFFIC_SECRET,
+                  secretAvailable.secret.secret);
+            }
             break;
           default:
             break;
@@ -280,11 +286,23 @@ class FizzClientHandshake::ActionMoveVisitor {
             client_.computeCiphers(
                 CipherKind::HandshakeWrite,
                 folly::range(secretAvailable.secret.secret));
+            if (client_.getKeyLogWriter()) {
+              client_.getKeyLogWriter()->write(
+                  client_.state_.clientRandom().value(),
+                  QuicKeyLogWriter::Label::CLIENT_HANDSHAKE_TRAFFIC_SECRET,
+                  secretAvailable.secret.secret);
+            }
             break;
           case fizz::HandshakeSecrets::ServerHandshakeTraffic:
             client_.computeCiphers(
                 CipherKind::HandshakeRead,
                 folly::range(secretAvailable.secret.secret));
+            if (client_.getKeyLogWriter()) {
+              client_.getKeyLogWriter()->write(
+                  client_.state_.clientRandom().value(),
+                  QuicKeyLogWriter::Label::SERVER_HANDSHAKE_TRAFFIC_SECRET,
+                  secretAvailable.secret.secret);
+            }
             break;
         }
         break;
@@ -294,11 +312,23 @@ class FizzClientHandshake::ActionMoveVisitor {
             client_.computeCiphers(
                 CipherKind::OneRttWrite,
                 folly::range(secretAvailable.secret.secret));
+            if (client_.getKeyLogWriter()) {
+              client_.getKeyLogWriter()->write(
+                  client_.state_.clientRandom().value(),
+                  QuicKeyLogWriter::Label::CLIENT_TRAFFIC_SECRET_0,
+                  secretAvailable.secret.secret);
+            }
             break;
           case fizz::AppTrafficSecrets::ServerAppTraffic:
             client_.computeCiphers(
                 CipherKind::OneRttRead,
                 folly::range(secretAvailable.secret.secret));
+            if (client_.getKeyLogWriter()) {
+              client_.getKeyLogWriter()->write(
+                  client_.state_.clientRandom().value(),
+                  QuicKeyLogWriter::Label::SERVER_TRAFFIC_SECRET_0,
+                  secretAvailable.secret.secret);
+            }
             break;
         }
         break;

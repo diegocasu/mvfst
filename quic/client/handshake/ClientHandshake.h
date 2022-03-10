@@ -15,6 +15,7 @@
 #include <quic/QuicException.h>
 #include <quic/handshake/Aead.h>
 #include <quic/handshake/HandshakeLayer.h>
+#include <quic/handshake/QuicKeyLogWriter.h>
 
 namespace quic {
 
@@ -89,6 +90,11 @@ class ClientHandshake : public Handshake {
    */
   virtual folly::Optional<ServerTransportParameters> getServerTransportParams();
 
+  /**
+   * Enables the logging of TLS secrets to file using the NSS format.
+   */
+  void enableKeyLogging(const QuicKeyLogWriter::Config& config);
+
   virtual ~ClientHandshake() = default;
 
  protected:
@@ -121,6 +127,7 @@ class ClientHandshake : public Handshake {
   const QuicClientConnectionState* getClientConn() const;
   const std::shared_ptr<ClientTransportParametersExtension>&
   getClientTransportParameters() const;
+  folly::Optional<QuicKeyLogWriter>& getKeyLogWriter();
 
   /**
    * Setters for the concrete implementation so that it can be tested.
@@ -154,6 +161,8 @@ class ClientHandshake : public Handshake {
   folly::IOBufQueue appDataReadBuf_{folly::IOBufQueue::cacheChainLength()};
 
   folly::exception_wrapper error_;
+
+  folly::Optional<QuicKeyLogWriter> keyLogger_;
 };
 
 } // namespace quic

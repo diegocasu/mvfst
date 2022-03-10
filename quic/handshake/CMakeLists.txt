@@ -8,6 +8,7 @@ add_library(
   CryptoFactory.cpp
   HandshakeLayer.cpp
   TransportParameters.cpp
+  QuicKeyLogWriter.cpp
 )
 
 target_include_directories(

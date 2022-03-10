@@ -35,8 +35,14 @@ FizzClientQuicHandshakeContext::makeClientHandshake(
   if (!cryptoFactory_) {
     cryptoFactory_ = std::make_unique<FizzCryptoFactory>();
   }
-  return std::make_unique<FizzClientHandshake>(
+  auto clientHandshake = std::make_unique<FizzClientHandshake>(
       conn, shared_from_this(), std::move(cryptoFactory_));
+
+  if (keyLoggerConfig_) {
+    clientHandshake->enableKeyLogging(keyLoggerConfig_.value());
+  }
+
+  return clientHandshake;
 }
 
 folly::Optional<QuicCachedPsk> FizzClientQuicHandshakeContext::getPsk(
@@ -63,6 +69,11 @@ void FizzClientQuicHandshakeContext::removePsk(
   }
 }
 
+void FizzClientQuicHandshakeContext::enableKeyLogging(
+    const QuicKeyLogWriter::Config& config) {
+  keyLoggerConfig_ = config;
+}
+
 std::shared_ptr<FizzClientQuicHandshakeContext>
 FizzClientQuicHandshakeContext::Builder::build() && {
   if (!context_) {
@@ -73,12 +84,18 @@ FizzClientQuicHandshakeContext::Builder::build() && {
         fizz::VerificationContext::Client);
   }
 
-  return std::shared_ptr<FizzClientQuicHandshakeContext>(
+  auto context = std::shared_ptr<FizzClientQuicHandshakeContext>(
       new FizzClientQuicHandshakeContext(
           std::move(context_),
           std::move(verifier_),
           std::move(pskCache_),
           std::move(cryptoFactory_)));
+
+  if (keyLoggerConfig_) {
+    context->enableKeyLogging(keyLoggerConfig_.value());
+  }
+
+  return context;
 }
 
 } // namespace quic

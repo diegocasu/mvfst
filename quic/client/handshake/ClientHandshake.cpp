@@ -225,4 +225,12 @@ void ClientHandshake::setZeroRttRejectedForTest(bool rejected) {
   zeroRttRejected_ = rejected;
 }
 
+folly::Optional<QuicKeyLogWriter>& ClientHandshake::getKeyLogWriter() {
+  return keyLogger_;
+}
+
+void ClientHandshake::enableKeyLogging(const QuicKeyLogWriter::Config& config) {
+  keyLogger_ = QuicKeyLogWriter(config);
+}
+
 } // namespace quic

@@ -9,6 +9,8 @@
 
 #include <quic/client/handshake/ClientHandshakeFactory.h>
 
+#include <quic/handshake/QuicKeyLogWriter.h>
+
 #include <quic/fizz/client/handshake/QuicPskCache.h>
 #include <quic/fizz/handshake/FizzCryptoFactory.h>
 
@@ -43,6 +45,12 @@ class FizzClientQuicHandshakeContext
       QuicCachedPsk quicCachedPsk);
   void removePsk(const folly::Optional<std::string>& hostname);
 
+  /**
+   * Enables a ClientHandshake object to
+   * log TLS secrets to file using the NSS format.
+   */
+  void enableKeyLogging(const QuicKeyLogWriter::Config& config);
+
  private:
   /**
    * We make the constructor private so that users have to use the Builder
@@ -67,6 +75,7 @@ class FizzClientQuicHandshakeContext
   std::shared_ptr<const fizz::CertificateVerifier> verifier_;
   std::shared_ptr<QuicPskCache> pskCache_;
   std::unique_ptr<FizzCryptoFactory> cryptoFactory_;
+  folly::Optional<QuicKeyLogWriter::Config> keyLoggerConfig_;
 
  public:
   class Builder {
@@ -93,6 +102,11 @@ class FizzClientQuicHandshakeContext
       return std::move(*this);
     }
 
+    Builder&& enableKeyLogging(const QuicKeyLogWriter::Config& config) && {
+      keyLoggerConfig_ = config;
+      return std::move(*this);
+    }
+
     std::shared_ptr<FizzClientQuicHandshakeContext> build() &&;
 
    private:
@@ -100,6 +114,7 @@ class FizzClientQuicHandshakeContext
     std::shared_ptr<const fizz::CertificateVerifier> verifier_;
     std::shared_ptr<QuicPskCache> pskCache_;
     std::unique_ptr<FizzCryptoFactory> cryptoFactory_;
+    folly::Optional<QuicKeyLogWriter::Config> keyLoggerConfig_;
   };
 };
 
