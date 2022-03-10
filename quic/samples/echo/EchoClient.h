@@ -23,6 +23,7 @@
 #include <quic/common/test/TestUtils.h>
 #include <quic/fizz/client/handshake/FizzClientQuicHandshakeContext.h>
 #include <quic/samples/echo/LogQuicStats.h>
+#include <quic/handshake/QuicKeyLogWriter.h>
 
 namespace quic {
 namespace samples {
@@ -105,6 +106,29 @@ class EchoClient : public quic::QuicSocket::ConnectionSetupCallback,
                << " error=" << toString(error);
   }
 
+  void setKeyLoggerConfig(
+      std::string& fileName,
+      std::string& flushPolicy,
+      std::string& writeMode) noexcept {
+    QuicKeyLogWriter::Config config;
+    config.fileName = fileName;
+
+    folly::toLowerAscii(flushPolicy);
+    folly::toLowerAscii(writeMode);
+
+    // The default option is QuicKeyLogWriter::FlushPolicy::DEFAULT
+    if (flushPolicy == "immediately") {
+      config.flushPolicy = QuicKeyLogWriter::FlushPolicy::IMMEDIATELY;
+    }
+
+    // The default option is QuicKeyLogWriter::WriteMode::APPEND
+    if (writeMode == "overwrite") {
+      config.writeMode = QuicKeyLogWriter::WriteMode::OVERWRITE;
+    }
+
+    keyLoggerConfig_ = config;
+  }
+
   void start(std::string token) {
     folly::ScopedEventBaseThread networkThread("EchoClientThread");
     auto evb = networkThread.getEventBase();
@@ -112,10 +136,21 @@ class EchoClient : public quic::QuicSocket::ConnectionSetupCallback,
 
     evb->runInEventBaseThreadAndWait([&] {
       auto sock = std::make_unique<folly::AsyncUDPSocket>(evb);
-      auto fizzClientContext =
-          FizzClientQuicHandshakeContext::Builder()
-              .setCertificateVerifier(test::createTestCertificateVerifier())
-              .build();
+      std::shared_ptr<FizzClientQuicHandshakeContext> fizzClientContext;
+
+      if (keyLoggerConfig_) {
+        fizzClientContext =
+            FizzClientQuicHandshakeContext::Builder()
+                .setCertificateVerifier(test::createTestCertificateVerifier())
+                .enableKeyLogging(keyLoggerConfig_.value())
+                .build();
+      } else {
+        fizzClientContext =
+            FizzClientQuicHandshakeContext::Builder()
+                .setCertificateVerifier(test::createTestCertificateVerifier())
+                .build();
+      }
+
       quicClient_ = std::make_shared<quic::QuicClientTransport>(
           evb, std::move(sock), std::move(fizzClientContext));
       quicClient_->setHostname("echo.com");
@@ -177,6 +212,7 @@ class EchoClient : public quic::QuicSocket::ConnectionSetupCallback,
   std::map<quic::StreamId, BufQueue> pendingOutput_;
   std::map<quic::StreamId, uint64_t> recvOffsets_;
   folly::fibers::Baton startDone_;
+  folly::Optional<quic::QuicKeyLogWriter::Config> keyLoggerConfig_;
 };
 } // namespace samples
 } // namespace quic

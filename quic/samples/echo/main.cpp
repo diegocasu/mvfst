@@ -21,6 +21,18 @@ DEFINE_string(
     token,
     "",
     "Client new token string to attach to connection initiation");
+DEFINE_string(
+    key_log_file,
+    "",
+    "Log file storing TLS secrets in NSS format. Client only");
+DEFINE_string(
+    key_log_flush_policy,
+    "default",
+    "Flushing policy of the key logger: 'default' or 'immediately'. Client only");
+DEFINE_string(
+    key_log_write_mode,
+    "append",
+    "Write mode of the key logger: 'append' or 'overwrite'. Client only");
 
 using namespace quic::samples;
 
@@ -43,6 +55,12 @@ int main(int argc, char* argv[]) {
       return -2;
     }
     EchoClient client(FLAGS_host, FLAGS_port);
+    if (!FLAGS_key_log_file.empty()) {
+      client.setKeyLoggerConfig(
+          FLAGS_key_log_file,
+          FLAGS_key_log_flush_policy,
+          FLAGS_key_log_write_mode);
+    }
     client.start(FLAGS_token);
   } else {
     LOG(ERROR) << "Unknown mode specified: " << FLAGS_mode;
