@@ -33,6 +33,7 @@ enum class TransportParameterId : uint64_t {
   retry_source_connection_id = 0x0010,
   max_datagram_frame_size = 0x0020,
   min_ack_delay = 0xff02de1a,
+  server_migration_suite = 0x0064,
 };
 
 struct TransportParameter {

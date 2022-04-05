@@ -197,5 +197,47 @@ TEST(ServerTransportParametersTest, TestMvfstFields) {
   EXPECT_FALSE(hasOriginalDestCid);
 }
 
+TEST(ServerTransportParametersTest, TestServerMigrationSuiteEncoding) {
+  uint64_t migrationSuiteValue = 0x101;
+  CustomIntegralTransportParameter migrationSuiteParameter(
+      static_cast<uint64_t>(TransportParameterId::server_migration_suite),
+      migrationSuiteValue);
+
+  std::vector<TransportParameter> customTransportParameters;
+  customTransportParameters.emplace_back(migrationSuiteParameter.encode());
+
+  ServerTransportParametersExtension ext(
+      QuicVersion::MVFST,
+      kDefaultConnectionWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      std::numeric_limits<uint32_t>::max(),
+      std::numeric_limits<uint32_t>::max(),
+      kDefaultIdleTimeout,
+      kDefaultAckDelayExponent,
+      kDefaultUDPSendPacketLen,
+      generateStatelessResetToken(),
+      ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
+      ConnectionId(std::vector<uint8_t>()),
+      customTransportParameters);
+  auto extensions = ext.getExtensions(getClientHello(QuicVersion::MVFST));
+
+  EXPECT_EQ(extensions.size(), 1);
+  auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
+  EXPECT_TRUE(serverParams.has_value());
+
+  EXPECT_NO_THROW(getIntegerParameter(
+      TransportParameterId::server_migration_suite,
+      serverParams.value().parameters));
+
+  auto decodedMigrationSuite = getIntegerParameter(
+      TransportParameterId::server_migration_suite,
+      serverParams.value().parameters);
+
+  EXPECT_TRUE(decodedMigrationSuite.hasValue());
+  EXPECT_TRUE(decodedMigrationSuite.value() == migrationSuiteValue);
+}
+
 } // namespace test
 } // namespace quic
