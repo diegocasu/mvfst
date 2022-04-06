@@ -3,7 +3,7 @@
 namespace quic {
 
 QuicServerMigrationNegotiator::QuicServerMigrationNegotiator(
-    std::vector<ServerMigrationProtocol> supportedProtocols)
+    std::unordered_set<ServerMigrationProtocol> supportedProtocols)
     : supportedProtocols_(std::move(supportedProtocols)) {
   if (supportedProtocols_.empty()) {
     throw QuicInternalException(
@@ -12,12 +12,12 @@ QuicServerMigrationNegotiator::QuicServerMigrationNegotiator(
   }
 }
 
-const folly::Optional<std::vector<ServerMigrationProtocol>>&
+const folly::Optional<std::unordered_set<ServerMigrationProtocol>>&
 QuicServerMigrationNegotiator::getNegotiatedProtocols() {
   return negotiatedProtocols_;
 }
 
-const std::vector<ServerMigrationProtocol>&
+const std::unordered_set<ServerMigrationProtocol>&
 QuicServerMigrationNegotiator::getSupportedProtocols() {
   return supportedProtocols_;
 }

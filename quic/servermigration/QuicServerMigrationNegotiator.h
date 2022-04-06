@@ -12,8 +12,9 @@ namespace quic {
  */
 class QuicServerMigrationNegotiator {
  protected:
-  const std::vector<ServerMigrationProtocol> supportedProtocols_;
-  folly::Optional<std::vector<ServerMigrationProtocol>> negotiatedProtocols_;
+  const std::unordered_set<ServerMigrationProtocol> supportedProtocols_;
+  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+      negotiatedProtocols_;
 
  public:
   /**
@@ -22,7 +23,7 @@ class QuicServerMigrationNegotiator {
    *                            It must be non empty.
    */
   explicit QuicServerMigrationNegotiator(
-      std::vector<ServerMigrationProtocol> supportedProtocols);
+      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
 
   virtual ~QuicServerMigrationNegotiator() = default;
 
@@ -32,10 +33,10 @@ class QuicServerMigrationNegotiator {
    * the (possibly empty) list of agreed protocols.
    * @return  the list of negotiated protocols.
    */
-  const folly::Optional<std::vector<ServerMigrationProtocol>>&
+  const folly::Optional<std::unordered_set<ServerMigrationProtocol>>&
   getNegotiatedProtocols();
 
-  const std::vector<ServerMigrationProtocol>& getSupportedProtocols();
+  const std::unordered_set<ServerMigrationProtocol>& getSupportedProtocols();
 
   /**
    * Returns the encoded value of the server_migration_suite transport
