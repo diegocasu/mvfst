@@ -649,4 +649,10 @@ enum class DataPathType : uint8_t {
 using PriorityLevel = uint8_t;
 constexpr uint8_t kDefaultMaxPriority = 7;
 
+enum class ServerMigrationProtocol : uint64_t {
+  EXPLICIT = 0x1,
+  POOL_OF_ADDRESSES = 0x1 << 1,
+  SYMMETRIC = 0x1 << 2,
+};
+
 } // namespace quic
