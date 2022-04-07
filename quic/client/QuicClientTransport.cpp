@@ -1778,6 +1778,17 @@ void QuicClientTransport::setSupportedVersions(
   conn_->readCodec->setCodecParameters(params);
 }
 
+bool QuicClientTransport::allowServerMigration(
+    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+  if (supportedProtocols.empty()) {
+    LOG(ERROR) << "No protocols specified for server migration";
+    return false;
+  }
+
+  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  return true;
+}
+
 void QuicClientTransport::onNetworkSwitch(
     std::unique_ptr<folly::AsyncUDPSocket> newSock) {
   if (!conn_->oneRttWriteCipher) {

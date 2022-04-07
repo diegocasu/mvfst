@@ -984,6 +984,20 @@ TEST_F(QuicClientTransportTest, CustomTransportParam) {
   client->closeNow(folly::none);
 }
 
+TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  EXPECT_TRUE(supportedProtocols.empty());
+  EXPECT_FALSE(client->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
+
+  client->closeNow(folly::none);
+}
+
 TEST_F(QuicClientTransportTest, CloseSocketOnWriteError) {
   client->addNewPeerAddress(serverAddr);
   EXPECT_CALL(*sock, write(_, _)).WillOnce(SetErrnoAndReturn(EBADF, -1));

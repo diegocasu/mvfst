@@ -149,6 +149,17 @@ class QuicClientTransport
   void onNetworkSwitch(std::unique_ptr<folly::AsyncUDPSocket> newSock) override;
 
   /**
+   * Enables the client-side support for server migration. This method
+   * must be called before start(), otherwise it has no effect.
+   * @param supportedProtocols  the set of protocols that are supported
+   *                            by the client. The set must be non-empty.
+   * @return                    true if the server migration support has been
+   *                            enabled, false otherwise.
+   */
+  bool allowServerMigration(
+      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc). Since the callback is invoked very frequently, it is
    * important that the implementation is efficient.
@@ -269,5 +280,8 @@ class QuicClientTransport
   bool transportKnobsSent_{false};
   // Callback function to invoke when the client receives a new token
   std::function<void(std::string)> newTokenCallback_;
+
+  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+      serverMigrationSupportedProtocols_;
 };
 } // namespace quic
