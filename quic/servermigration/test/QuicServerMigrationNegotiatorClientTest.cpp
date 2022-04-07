@@ -36,9 +36,7 @@ TEST(QuicServerMigrationNegotiatorClientTest, TestTransportParameterEncoding) {
   EXPECT_TRUE(decodedValue == expectedParameterValue);
 }
 
-TEST(
-    QuicServerMigrationNegotiatorClientTest,
-    TestWrongParametersPassedOrReceived) {
+TEST(QuicServerMigrationNegotiatorClientTest, TestWrongParametersPassedOrReceived) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
@@ -99,9 +97,7 @@ TEST(
   }
 }
 
-TEST(
-    QuicServerMigrationNegotiatorClientTest,
-    TestSuccessfulNegotiationWithSingleProtocol) {
+TEST(QuicServerMigrationNegotiatorClientTest, TestSuccessfulNegotiationWithSingleProtocol) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
@@ -122,9 +118,7 @@ TEST(
       negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
 }
 
-TEST(
-    QuicServerMigrationNegotiatorClientTest,
-    TestSuccessfulNegotiationWithMultipleProtocols) {
+TEST(QuicServerMigrationNegotiatorClientTest, TestSuccessfulNegotiationWithMultipleProtocols) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
