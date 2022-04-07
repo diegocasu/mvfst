@@ -2,6 +2,7 @@ add_library(
   mvfst_server_migration STATIC
   QuicServerMigrationNegotiator.cpp
   QuicServerMigrationNegotiatorClient.cpp
+  QuicServerMigrationNegotiatorServer.cpp
 )
 
 target_include_directories(
