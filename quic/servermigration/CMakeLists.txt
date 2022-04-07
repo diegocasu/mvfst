@@ -1,6 +1,7 @@
 add_library(
   mvfst_server_migration STATIC
   QuicServerMigrationNegotiator.cpp
+  QuicServerMigrationNegotiatorClient.cpp
 )
 
 target_include_directories(
@@ -46,3 +47,5 @@ install(
   EXPORT mvfst-exports
   DESTINATION lib
 )
+
+add_subdirectory(test)
