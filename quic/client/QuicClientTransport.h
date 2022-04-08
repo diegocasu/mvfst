@@ -15,6 +15,7 @@
 #include <quic/api/QuicTransportBase.h>
 #include <quic/client/state/ClientStateMachine.h>
 #include <quic/common/BufUtil.h>
+#include <quic/servermigration/QuicServerMigrationNegotiatorClient.h>
 #include <quic/state/QuicConnectionStats.h>
 
 namespace quic {
@@ -253,6 +254,14 @@ class QuicClientTransport
   void setD6DRaiseTimeoutTransportParameter();
   void setD6DProbeTimeoutTransportParameter();
   void setSupportedExtensionTransportParameters();
+
+  /**
+   * Adds the server_migration_suite transport parameter
+   * to the list of custom transport parameters sent by the client.
+   * If the support for server migration is not enabled, it does nothing.
+   */
+  void setServerMigrationTransportParameter();
+
   void adjustGROBuffers();
   void trackDatagramReceived(size_t len);
 
@@ -283,5 +292,7 @@ class QuicClientTransport
 
   folly::Optional<std::unordered_set<ServerMigrationProtocol>>
       serverMigrationSupportedProtocols_;
+  folly::Optional<QuicServerMigrationNegotiatorClient>
+      serverMigrationNegotiator_;
 };
 } // namespace quic

@@ -993,6 +993,7 @@ void QuicClientTransport::startCryptoHandshake() {
   setD6DRaiseTimeoutTransportParameter();
   setD6DProbeTimeoutTransportParameter();
   setSupportedExtensionTransportParameters();
+  setServerMigrationTransportParameter();
 
   auto paramsExtension = std::make_shared<ClientTransportParametersExtension>(
       conn_->originalVersion.value(),
@@ -1742,6 +1743,16 @@ void QuicClientTransport::setSupportedExtensionTransportParameters() {
                 TransportParameterId::max_datagram_frame_size),
             conn_->datagramState.maxReadFrameSize);
     customTransportParameters_.push_back(maxDatagramFrameSize->encode());
+  }
+}
+
+void QuicClientTransport::setServerMigrationTransportParameter() {
+  if (serverMigrationSupportedProtocols_) {
+    QuicServerMigrationNegotiatorClient negotiator(
+        serverMigrationSupportedProtocols_.value());
+    serverMigrationNegotiator_ = std::move(negotiator);
+    customTransportParameters_.push_back(
+        serverMigrationNegotiator_->onTransportParametersEncoding());
   }
 }
 
