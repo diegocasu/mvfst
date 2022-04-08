@@ -12,7 +12,7 @@ namespace quic {
  */
 class QuicServerMigrationNegotiator {
  protected:
-  const std::unordered_set<ServerMigrationProtocol> supportedProtocols_;
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols_;
   folly::Optional<std::unordered_set<ServerMigrationProtocol>>
       negotiatedProtocols_;
 
@@ -26,6 +26,13 @@ class QuicServerMigrationNegotiator {
       std::unordered_set<ServerMigrationProtocol> supportedProtocols);
 
   virtual ~QuicServerMigrationNegotiator() = default;
+
+  QuicServerMigrationNegotiator(QuicServerMigrationNegotiator&&) = default;
+  QuicServerMigrationNegotiator(const QuicServerMigrationNegotiator&) = default;
+  QuicServerMigrationNegotiator& operator=(
+      const QuicServerMigrationNegotiator&) = default;
+  QuicServerMigrationNegotiator& operator=(QuicServerMigrationNegotiator&&) =
+      default;
 
   /**
    * Returns the list of negotiated protocols. If the negotiation has not

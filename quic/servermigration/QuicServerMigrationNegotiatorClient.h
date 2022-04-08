@@ -17,6 +17,15 @@ class QuicServerMigrationNegotiatorClient
 
   ~QuicServerMigrationNegotiatorClient() override = default;
 
+  QuicServerMigrationNegotiatorClient(QuicServerMigrationNegotiatorClient&&) =
+      default;
+  QuicServerMigrationNegotiatorClient(
+      const QuicServerMigrationNegotiatorClient&) = default;
+  QuicServerMigrationNegotiatorClient& operator=(
+      const QuicServerMigrationNegotiatorClient&) = default;
+  QuicServerMigrationNegotiatorClient& operator=(
+      QuicServerMigrationNegotiatorClient&&) = default;
+
   TransportParameter onTransportParametersEncoding() override;
   void onMigrationSuiteReceived(TransportParameter migrationSuite) override;
 };
