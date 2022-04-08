@@ -10,7 +10,6 @@ project(mvfst)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-SET(CMAKE_BUILD_TYPE Debug)
 
 set(CMAKE_MODULE_PATH
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
@@ -29,9 +28,6 @@ fb_activate_static_library_option()
 set(QUIC_FBCODE_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Dependencies
-
-list(APPEND CMAKE_PREFIX_PATH "/home/osboxes/Scrivania/mvfst/_build/deps")
-
 find_package(Boost 1.62
   REQUIRED COMPONENTS
   iostreams
