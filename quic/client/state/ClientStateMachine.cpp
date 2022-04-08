@@ -146,6 +146,12 @@ void processServerInitialParams(
     }
   }
 
+  auto it = findParameter(
+      serverParams.parameters, TransportParameterId::server_migration_suite);
+  if (it != serverParams.parameters.end()) {
+    conn.serverMigrationNegotiator_.value().onMigrationSuiteReceived(*it);
+  }
+
   // TODO Validate active_connection_id_limit
 
   if (!packetSize || *packetSize == 0) {

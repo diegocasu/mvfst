@@ -149,4 +149,28 @@ TEST_F(ClientStateMachineTest, TestProcessMaxDatagramSizeOk) {
       kMaxDatagramPacketOverhead + 1);
 }
 
+TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
+  QuicClientConnectionState clientConnection(
+      FizzClientQuicHandshakeContext::Builder().build());
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
+  clientConnection.serverMigrationNegotiator_ = std::move(negotiator);
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.has_value());
+
+  QuicServerMigrationNegotiatorClient fakePeerNegotiator(supportedProtocols);
+  std::vector<TransportParameter> transportParameters;
+  transportParameters.push_back(
+      fakePeerNegotiator.onTransportParametersEncoding());
+  ServerTransportParameters serverTransportParams = {
+      std::move(transportParameters)};
+
+  ASSERT_NO_THROW(
+      processServerInitialParams(clientConnection, serverTransportParams, 0));
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.value()
+                  .getNegotiatedProtocols()
+                  .has_value());
+}
+
 } // namespace quic::test
