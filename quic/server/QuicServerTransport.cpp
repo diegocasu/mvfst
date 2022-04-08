@@ -138,6 +138,17 @@ void QuicServerTransport::setServerConnectionIdRejector(
   }
 }
 
+bool QuicServerTransport::allowServerMigration(
+    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+  if (supportedProtocols.empty()) {
+    LOG(ERROR) << "No protocols specified for server migration";
+    return false;
+  }
+
+  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  return true;
+}
+
 void QuicServerTransport::onReadData(
     const folly::SocketAddress& peer,
     NetworkDataSingle&& networkData) {

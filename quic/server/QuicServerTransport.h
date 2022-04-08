@@ -106,6 +106,18 @@ class QuicServerTransport
       ServerConnectionIdParams params) noexcept;
 
   /**
+   * Enables the server-side support for server migration.
+   * It has no effect if called after the reception of the
+   * first client packet.
+   * @param supportedProtocols  the set of protocols that are supported
+   *                            by the server. The set must be non-empty.
+   * @return                    true if the server migration support has been
+   *                            enabled, false otherwise.
+   */
+  bool allowServerMigration(
+      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc).
    */
@@ -195,5 +207,7 @@ class QuicServerTransport
       uint64_t,
       std::function<void(QuicServerTransport*, uint64_t)>>
       transportKnobParamHandlers_;
+  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+      serverMigrationSupportedProtocols_;
 };
 } // namespace quic

@@ -1716,6 +1716,18 @@ TEST_F(QuicServerTransportTest, ShortHeaderPacketWithNoFramesAfterClose) {
           PacketDropReason::PROTOCOL_VIOLATION));
 }
 
+TEST_F(QuicServerTransportTest, TestAllowServerMigration) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  EXPECT_TRUE(supportedProtocols.empty());
+  EXPECT_FALSE(server->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {
