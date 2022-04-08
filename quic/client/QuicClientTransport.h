@@ -255,9 +255,10 @@ class QuicClientTransport
   void setSupportedExtensionTransportParameters();
 
   /**
-   * Adds the server_migration_suite transport parameter
-   * to the list of custom transport parameters sent by the client.
-   * If the support for server migration is not enabled, it does nothing.
+   * Instantiates the server migration protocol negotiator and adds the
+   * server_migration_suite transport parameter to the list of custom transport
+   * parameters sent by the client. If the support for server migration
+   * is not enabled, it does nothing.
    */
   void setServerMigrationTransportParameter();
 

@@ -173,4 +173,45 @@ TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
                   .has_value());
 }
 
+TEST_F(ClientStateMachineTest, TestReceptionOfServerMigrationSuiteWithMigrationDisabled) {
+  QuicClientConnectionState clientConnection(
+      FizzClientQuicHandshakeContext::Builder().build());
+
+  std::unordered_set<ServerMigrationProtocol> peerSupportedProtocols;
+  peerSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  QuicServerMigrationNegotiatorClient fakePeerNegotiator(
+      peerSupportedProtocols);
+  std::vector<TransportParameter> transportParameters;
+  transportParameters.push_back(
+      fakePeerNegotiator.onTransportParametersEncoding());
+  ServerTransportParameters serverTransportParams = {
+      std::move(transportParameters)};
+
+  ASSERT_TRUE(!clientConnection.serverMigrationNegotiator_);
+  ASSERT_THROW(
+      processServerInitialParams(clientConnection, serverTransportParams, 0),
+      QuicTransportException);
+}
+
+TEST_F(ClientStateMachineTest, TestNoReceptionOfServerMigrationSuite) {
+  QuicClientConnectionState clientConnection(
+      FizzClientQuicHandshakeContext::Builder().build());
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
+  clientConnection.serverMigrationNegotiator_ = std::move(negotiator);
+
+  std::vector<TransportParameter> transportParameters;
+  ServerTransportParameters serverTransportParams = {
+      std::move(transportParameters)};
+
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.has_value());
+  ASSERT_NO_THROW(
+      processServerInitialParams(clientConnection, serverTransportParams, 0));
+  ASSERT_TRUE(
+      !clientConnection.serverMigrationNegotiator_->getNegotiatedProtocols());
+}
+
 } // namespace quic::test
