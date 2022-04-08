@@ -13,6 +13,7 @@
 #include <quic/congestion_control/QuicCubic.h>
 #include <quic/flowcontrol/QuicFlowController.h>
 #include <quic/handshake/TransportParameters.h>
+#include <quic/servermigration/QuicServerMigrationNegotiatorClient.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/StateData.h>
 
@@ -56,6 +57,9 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
 
   std::shared_ptr<ClientHandshakeFactory> handshakeFactory;
   ClientHandshake* clientHandshakeLayer;
+
+  folly::Optional<QuicServerMigrationNegotiatorClient>
+      serverMigrationNegotiator_;
 
   folly::Optional<TimePoint> lastCloseSentTime;
 

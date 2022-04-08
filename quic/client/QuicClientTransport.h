@@ -15,7 +15,6 @@
 #include <quic/api/QuicTransportBase.h>
 #include <quic/client/state/ClientStateMachine.h>
 #include <quic/common/BufUtil.h>
-#include <quic/servermigration/QuicServerMigrationNegotiatorClient.h>
 #include <quic/state/QuicConnectionStats.h>
 
 namespace quic {
@@ -292,7 +291,5 @@ class QuicClientTransport
 
   folly::Optional<std::unordered_set<ServerMigrationProtocol>>
       serverMigrationSupportedProtocols_;
-  folly::Optional<QuicServerMigrationNegotiatorClient>
-      serverMigrationNegotiator_;
 };
 } // namespace quic
