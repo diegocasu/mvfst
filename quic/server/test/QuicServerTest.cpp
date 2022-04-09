@@ -118,6 +118,41 @@ TEST_F(SimpleQuicServerWorkerTest, TurnOffPMTU) {
   worker_->bind(addr);
 }
 
+TEST_F(SimpleQuicServerWorkerTest, TestAllowServerMigration) {
+  workerCb_ = std::make_shared<NiceMock<MockWorkerCallback>>();
+  worker_ = std::make_unique<QuicServerWorker>(workerCb_);
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  EXPECT_TRUE(supportedProtocols.empty());
+  EXPECT_FALSE(worker_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(worker_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(worker_->allowServerMigration(supportedProtocols));
+}
+
+TEST_F(SimpleQuicServerWorkerTest, TestRejectAllowServerMigrationAfterStart) {
+  auto sock =
+      std::make_unique<NiceMock<folly::test::MockAsyncUDPSocket>>(&eventbase_);
+  rawSocket_ = sock.get();
+  workerCb_ = std::make_shared<NiceMock<MockWorkerCallback>>();
+  worker_ = std::make_unique<QuicServerWorker>(workerCb_);
+  worker_->setSocket(std::move(sock));
+  worker_->setSupportedVersions({QuicVersion::MVFST});
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(worker_->allowServerMigration(supportedProtocols));
+
+  worker_->start();
+  EXPECT_FALSE(worker_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  EXPECT_FALSE(worker_->allowServerMigration(supportedProtocols));
+}
+
 std::unique_ptr<folly::IOBuf> createData(size_t size) {
   std::string data;
   data.resize(size);

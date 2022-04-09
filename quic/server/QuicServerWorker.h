@@ -291,6 +291,18 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   void setHealthCheckToken(const std::string& healthCheckToken);
 
   /**
+   * Enables the server-side support for server migration for each
+   * connection managed by the worker. It has no effect if called
+   * after start().
+   * @param supportedProtocols  the set of protocols that are supported
+   *                            by the server. The set must be non-empty.
+   * @return                    true if the server migration support has been
+   *                            enabled, false otherwise.
+   */
+  bool allowServerMigration(
+      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc). Since the callback is invoked very frequently and per thread, it is
    * important that the implementation is efficient.
@@ -650,6 +662,14 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   std::unique_ptr<CCPReader> ccpReader_;
 
   TimePoint largestPacketReceiveTime_{TimePoint::min()};
+
+  // Used to determine if start() has been called or not.
+  // At the moment, it is used only to avoid unexpected
+  // calls to allowServerMigration().
+  bool started_{false};
+
+  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+      serverMigrationSupportedProtocols_;
 };
 
 } // namespace quic

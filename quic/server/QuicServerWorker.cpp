@@ -117,6 +117,21 @@ void QuicServerWorker::setTransportSettingsOverrideFn(
   transportSettingsOverrideFn_ = std::move(fn);
 }
 
+bool QuicServerWorker::allowServerMigration(
+    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+  if (started_) {
+    LOG(ERROR)
+        << "Cannot modify server migration support while the worker is running";
+    return false;
+  }
+  if (supportedProtocols.empty()) {
+    LOG(ERROR) << "No protocols specified for server migration";
+    return false;
+  }
+  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  return true;
+}
+
 void QuicServerWorker::setTransportStatsCallback(
     std::unique_ptr<QuicTransportStatsCallback> statsCallback) noexcept {
   CHECK(statsCallback);
@@ -162,6 +177,7 @@ void QuicServerWorker::start() {
       fmt::ptr(this),
       folly::getCurrentThreadID(),
       (int)processId_);
+  started_ = true;
 }
 
 void QuicServerWorker::pauseRead() {
@@ -686,6 +702,12 @@ void QuicServerWorker::dispatchPacketData(
         } else {
           globalUnfinishedHandshakes++;
           CHECK(trans);
+
+          if (serverMigrationSupportedProtocols_) {
+            trans->allowServerMigration(
+                serverMigrationSupportedProtocols_.value());
+          }
+
           if (transportSettings_.dataPathType ==
                   DataPathType::ContinuousMemory &&
               bufAccessor_) {
