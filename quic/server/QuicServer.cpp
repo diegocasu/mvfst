@@ -194,6 +194,11 @@ void QuicServer::initializeWorkers(
     worker->setUnfinishedHandshakeLimit(unfinishedHandshakeLimitFn_);
     worker->setWorkerId(i);
     worker->setTransportSettingsOverrideFn(transportSettingsOverrideFn_);
+
+    if (serverMigrationSupportedProtocols_) {
+      worker->allowServerMigration(serverMigrationSupportedProtocols_.value());
+    }
+
     workers_.push_back(std::move(worker));
     evbToWorkers_.emplace(workerEvb, workers_.back().get());
   }
@@ -323,6 +328,7 @@ void QuicServer::start() {
       worker->start();
     });
   }
+  started_ = true;
 }
 
 void QuicServer::allowBeingTakenOver(const folly::SocketAddress& addr) {
@@ -679,6 +685,21 @@ void QuicServer::stopPacketForwarding(std::chrono::milliseconds delay) {
               delay.count());
         });
   }
+}
+
+bool QuicServer::allowServerMigration(
+    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+  if (started_) {
+    LOG(ERROR)
+        << "Cannot modify server migration support while the worker is running";
+    return false;
+  }
+  if (supportedProtocols.empty()) {
+    LOG(ERROR) << "No protocols specified for server migration";
+    return false;
+  }
+  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  return true;
 }
 
 void QuicServer::setTransportStatsCallbackFactory(

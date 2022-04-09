@@ -3162,5 +3162,30 @@ TEST_F(QuicServerTest, OneEVB) {
   evb.loop();
 }
 
+TEST_F(QuicServerTest, TestAllowServerMigration) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  EXPECT_TRUE(supportedProtocols.empty());
+  EXPECT_FALSE(server_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(server_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(server_->allowServerMigration(supportedProtocols));
+}
+
+TEST_F(QuicServerTest, TestRejectAllowServerMigrationAfterStart) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  EXPECT_TRUE(server_->allowServerMigration(supportedProtocols));
+
+  folly::SocketAddress addr("::1", 0);
+  server_->start(addr, 0);
+  EXPECT_FALSE(server_->allowServerMigration(supportedProtocols));
+
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  EXPECT_FALSE(server_->allowServerMigration(supportedProtocols));
+}
+
 } // namespace test
 } // namespace quic
