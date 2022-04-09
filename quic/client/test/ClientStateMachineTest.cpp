@@ -156,8 +156,8 @@ TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
 
   QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
-  clientConnection.serverMigrationNegotiator_ = std::move(negotiator);
-  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.has_value());
+  clientConnection.serverMigrationNegotiator = std::move(negotiator);
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator.has_value());
 
   QuicServerMigrationNegotiatorClient fakePeerNegotiator(supportedProtocols);
   std::vector<TransportParameter> transportParameters;
@@ -168,7 +168,7 @@ TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
 
   ASSERT_NO_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0));
-  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.value()
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator.value()
                   .getNegotiatedProtocols()
                   .has_value());
 }
@@ -187,7 +187,7 @@ TEST_F(ClientStateMachineTest, TestReceptionOfServerMigrationSuiteWithMigrationD
   ServerTransportParameters serverTransportParams = {
       std::move(transportParameters)};
 
-  ASSERT_TRUE(!clientConnection.serverMigrationNegotiator_);
+  ASSERT_TRUE(!clientConnection.serverMigrationNegotiator);
   ASSERT_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0),
       QuicTransportException);
@@ -201,17 +201,17 @@ TEST_F(ClientStateMachineTest, TestNoReceptionOfServerMigrationSuite) {
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
 
   QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
-  clientConnection.serverMigrationNegotiator_ = std::move(negotiator);
+  clientConnection.serverMigrationNegotiator = std::move(negotiator);
 
   std::vector<TransportParameter> transportParameters;
   ServerTransportParameters serverTransportParams = {
       std::move(transportParameters)};
 
-  ASSERT_TRUE(clientConnection.serverMigrationNegotiator_.has_value());
+  ASSERT_TRUE(clientConnection.serverMigrationNegotiator.has_value());
   ASSERT_NO_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0));
   ASSERT_TRUE(
-      !clientConnection.serverMigrationNegotiator_->getNegotiatedProtocols());
+      !clientConnection.serverMigrationNegotiator->getNegotiatedProtocols());
 }
 
 } // namespace quic::test

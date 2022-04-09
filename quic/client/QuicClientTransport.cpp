@@ -1750,8 +1750,8 @@ void QuicClientTransport::setServerMigrationTransportParameter() {
   if (serverMigrationSupportedProtocols_) {
     QuicServerMigrationNegotiatorClient negotiator(
         serverMigrationSupportedProtocols_.value());
-    clientConn_->serverMigrationNegotiator_ = std::move(negotiator);
-    customTransportParameters_.push_back(clientConn_->serverMigrationNegotiator_
+    clientConn_->serverMigrationNegotiator = std::move(negotiator);
+    customTransportParameters_.push_back(clientConn_->serverMigrationNegotiator
                                              ->onTransportParametersEncoding());
   }
 }

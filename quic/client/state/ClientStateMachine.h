@@ -59,7 +59,7 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
   ClientHandshake* clientHandshakeLayer;
 
   folly::Optional<QuicServerMigrationNegotiatorClient>
-      serverMigrationNegotiator_;
+      serverMigrationNegotiator;
 
   folly::Optional<TimePoint> lastCloseSentTime;
 

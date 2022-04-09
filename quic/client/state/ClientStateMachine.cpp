@@ -149,12 +149,12 @@ void processServerInitialParams(
   auto it = findParameter(
       serverParams.parameters, TransportParameterId::server_migration_suite);
   if (it != serverParams.parameters.end()) {
-    if (!conn.serverMigrationNegotiator_) {
+    if (!conn.serverMigrationNegotiator) {
       throw QuicTransportException(
           "Received server_migration_suite with server migration disabled",
           TransportErrorCode::TRANSPORT_PARAMETER_ERROR);
     }
-    conn.serverMigrationNegotiator_.value().onMigrationSuiteReceived(*it);
+    conn.serverMigrationNegotiator.value().onMigrationSuiteReceived(*it);
   }
 
   // TODO Validate active_connection_id_limit
