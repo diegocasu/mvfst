@@ -239,5 +239,87 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteEncoding) {
   EXPECT_TRUE(decodedMigrationSuite.value() == migrationSuiteValue);
 }
 
+TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
+  std::vector<TransportParameter> customTransportParameters;
+  ServerTransportParametersExtension extension(
+      QuicVersion::MVFST,
+      kDefaultConnectionWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      std::numeric_limits<uint32_t>::max(),
+      std::numeric_limits<uint32_t>::max(),
+      kDefaultIdleTimeout,
+      kDefaultAckDelayExponent,
+      kDefaultUDPSendPacketLen,
+      generateStatelessResetToken(),
+      ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
+      ConnectionId(std::vector<uint8_t>()),
+      customTransportParameters);
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
+  extension.setServerMigrationSuiteNegotiator(&negotiator);
+
+  auto clientHello = TestMessages::clientHello();
+  ClientTransportParameters clientParams;
+  clientParams.parameters.emplace_back(
+      CustomIntegralTransportParameter(
+          static_cast<uint64_t>(TransportParameterId::server_migration_suite),
+          0x7)
+          .encode());
+  clientHello.extensions.push_back(
+      encodeExtension(clientParams, QuicVersion::MVFST));
+
+  auto extensions = extension.getExtensions(clientHello);
+  ASSERT_TRUE(negotiator.getNegotiatedProtocols().has_value());
+  EXPECT_TRUE(
+      negotiator.getNegotiatedProtocols().value().size() == 1 &&
+      negotiator.getNegotiatedProtocols().value().count(
+          ServerMigrationProtocol::EXPLICIT));
+
+  auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
+  ASSERT_TRUE(serverParams.has_value());
+  auto it = findParameter(
+      serverParams.value().parameters,
+      TransportParameterId::server_migration_suite);
+  EXPECT_NE(it, serverParams.value().parameters.end());
+}
+
+TEST(ServerTransportParametersTest, TestNoServerMigrationSuiteInClientHello) {
+  std::vector<TransportParameter> customTransportParameters;
+  ServerTransportParametersExtension extension(
+      QuicVersion::MVFST,
+      kDefaultConnectionWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      kDefaultStreamWindowSize,
+      std::numeric_limits<uint32_t>::max(),
+      std::numeric_limits<uint32_t>::max(),
+      kDefaultIdleTimeout,
+      kDefaultAckDelayExponent,
+      kDefaultUDPSendPacketLen,
+      generateStatelessResetToken(),
+      ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
+      ConnectionId(std::vector<uint8_t>()),
+      customTransportParameters);
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
+  extension.setServerMigrationSuiteNegotiator(&negotiator);
+
+  auto extensions = extension.getExtensions(getClientHello(QuicVersion::MVFST));
+  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
+
+  auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
+  ASSERT_TRUE(serverParams.has_value());
+  auto it = findParameter(
+      serverParams.value().parameters,
+      TransportParameterId::server_migration_suite);
+  EXPECT_EQ(it, serverParams.value().parameters.end());
+}
+
 } // namespace test
 } // namespace quic

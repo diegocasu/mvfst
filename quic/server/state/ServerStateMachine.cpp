@@ -728,9 +728,7 @@ void onServerReadDataFromOpen(
     conn.serverConnectionId = newServerConnIdData->connId;
 
     auto customTransportParams = setSupportedExtensionTransportParameters(conn);
-
-    QUIC_STATS(conn.statsCallback, onStatelessReset);
-    conn.serverHandshakeLayer->accept(
+    auto serverTransportParamsExtension =
         std::make_shared<ServerTransportParametersExtension>(
             version,
             conn.transportSettings.advertisedInitialConnectionWindowSize,
@@ -745,7 +743,15 @@ void onServerReadDataFromOpen(
             *newServerConnIdData->token,
             conn.serverConnectionId.value(),
             initialDestinationConnectionId,
-            customTransportParams));
+            customTransportParams);
+
+    if (conn.serverMigrationNegotiator) {
+      serverTransportParamsExtension->setServerMigrationSuiteNegotiator(
+          &conn.serverMigrationNegotiator.value());
+    }
+
+    QUIC_STATS(conn.statsCallback, onStatelessReset);
+    conn.serverHandshakeLayer->accept(serverTransportParamsExtension);
     conn.transportParametersEncoded = true;
     const CryptoFactory& cryptoFactory =
         conn.serverHandshakeLayer->getCryptoFactory();

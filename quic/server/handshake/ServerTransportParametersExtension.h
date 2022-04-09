@@ -10,6 +10,7 @@
 #include <fizz/server/ServerExtensions.h>
 #include <quic/fizz/handshake/FizzTransportParameters.h>
 #include <quic/server/handshake/StatelessResetGenerator.h>
+#include <quic/servermigration/QuicServerMigrationNegotiatorServer.h>
 
 namespace quic {
 
@@ -104,6 +105,18 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
           initialSourceCid_));
     }
 
+    if (clientTransportParameters_ && serverMigrationNegotiator_) {
+      auto it = findParameter(
+          clientTransportParameters_.value().parameters,
+          TransportParameterId::server_migration_suite);
+      if (it != clientTransportParameters_.value().parameters.end()) {
+        serverMigrationNegotiator_.value()->onMigrationSuiteReceived(*it);
+        customTransportParameters_.push_back(
+            serverMigrationNegotiator_.value()
+                ->onTransportParametersEncoding());
+      }
+    }
+
     for (const auto& customParameter : customTransportParameters_) {
       params.parameters.push_back(customParameter);
     }
@@ -114,6 +127,13 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
 
   folly::Optional<ClientTransportParameters> getClientTransportParams() {
     return std::move(clientTransportParameters_);
+  }
+
+  void setServerMigrationSuiteNegotiator(
+      QuicServerMigrationNegotiatorServer* serverMigrationNegotiator) {
+    if (serverMigrationNegotiator != nullptr) {
+      serverMigrationNegotiator_ = serverMigrationNegotiator;
+    }
   }
 
  private:
@@ -132,5 +152,7 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
   ConnectionId initialSourceCid_;
   ConnectionId originalDestinationCid_;
   std::vector<TransportParameter> customTransportParameters_;
+  folly::Optional<QuicServerMigrationNegotiatorServer*>
+      serverMigrationNegotiator_;
 };
 } // namespace quic

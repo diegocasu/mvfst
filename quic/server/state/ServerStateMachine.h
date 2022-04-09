@@ -21,6 +21,7 @@
 #include <quic/server/handshake/ServerHandshake.h>
 #include <quic/server/handshake/ServerHandshakeFactory.h>
 #include <quic/server/state/ServerConnectionIdRejector.h>
+#include <quic/servermigration/QuicServerMigrationNegotiatorServer.h>
 #include <quic/state/AckHandlers.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
@@ -96,6 +97,9 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
 
   // Current state of connection migration
   ConnectionMigrationState migrationState;
+
+  folly::Optional<QuicServerMigrationNegotiatorServer>
+      serverMigrationNegotiator;
 
   // Parameters to generate server chosen connection id
   folly::Optional<ServerConnectionIdParams> serverConnIdParams;

@@ -146,6 +146,9 @@ bool QuicServerTransport::allowServerMigration(
   }
 
   serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  QuicServerMigrationNegotiatorServer negotiator(
+      serverMigrationSupportedProtocols_.value());
+  serverConn_->serverMigrationNegotiator = std::move((negotiator));
   return true;
 }
 

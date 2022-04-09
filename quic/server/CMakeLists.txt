@@ -35,6 +35,7 @@ add_dependencies(
   mvfst_fizz_handshake
   mvfst_qlogger
   mvfst_state_ack_handler
+  mvfst_server_migration
 )
 
 
@@ -113,6 +114,7 @@ target_link_libraries(
   mvfst_state_ack_handler
   mvfst_transport
   mvfst_transport_knobs
+  mvfst_server_migration
   ${LIBCCP_LIBRARY}
   ${LIBSTARTCCP_LIBRARY}
 )
