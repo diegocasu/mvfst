@@ -40,7 +40,7 @@ file(
 list(FILTER QUIC_API_HEADERS_TOINSTALL EXCLUDE REGEX test/)
 foreach(header ${QUIC_API_HEADERS_TOINSTALL})
   get_filename_component(header_dir ${header} DIRECTORY)
-  install(FILES ${header} DESTINATION include/quic/loss/${header_dir})
+  install(FILES ${header} DESTINATION include/quic/servermigration/${header_dir})
 endforeach()
 
 install(
