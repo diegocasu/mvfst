@@ -152,6 +152,16 @@ bool QuicServerTransport::allowServerMigration(
   return true;
 }
 
+bool QuicServerTransport::setClientStateUpdateCallback(
+    ClientStateUpdateCallback* callback) {
+  if (callback == nullptr) {
+    LOG(ERROR) << "Null client state update callback";
+    return false;
+  }
+  serverConn_->clientStateUpdateCallback = callback;
+  return true;
+}
+
 void QuicServerTransport::onReadData(
     const folly::SocketAddress& peer,
     NetworkDataSingle&& networkData) {

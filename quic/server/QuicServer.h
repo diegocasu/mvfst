@@ -323,6 +323,15 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
       std::unordered_set<ServerMigrationProtocol> supportedProtocols);
 
   /**
+   * Sets the callback to invoke when the server migration management
+   * interface should be informed about the change of a client's state.
+   * It has no effect if called after start().
+   * @param callback  the callback.
+   * @return          true if the callback has been set, false otherwise.
+   */
+  bool setClientStateUpdateCallback(ClientStateUpdateCallback* callback);
+
+  /**
    * Factory to create per worker callback for various transport stats (such as
    * packet received, dropped etc). QuicServer calls 'make' during the
    * initialization _for each worker_.
@@ -486,12 +495,11 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
   uint64_t ccpId_{0};
 
   // Used to determine if start() has been called or not.
-  // At the moment, it is used only to avoid unexpected
-  // calls to allowServerMigration().
   bool started_{false};
 
   folly::Optional<std::unordered_set<ServerMigrationProtocol>>
       serverMigrationSupportedProtocols_;
+  ClientStateUpdateCallback* clientStateUpdateCallback_{nullptr};
 };
 
 } // namespace quic

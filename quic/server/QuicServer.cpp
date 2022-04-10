@@ -198,6 +198,9 @@ void QuicServer::initializeWorkers(
     if (serverMigrationSupportedProtocols_) {
       worker->allowServerMigration(serverMigrationSupportedProtocols_.value());
     }
+    if (clientStateUpdateCallback_) {
+      worker->setClientStateUpdateCallback(clientStateUpdateCallback_);
+    }
 
     workers_.push_back(std::move(worker));
     evbToWorkers_.emplace(workerEvb, workers_.back().get());
@@ -691,7 +694,7 @@ bool QuicServer::allowServerMigration(
     std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
   if (started_) {
     LOG(ERROR)
-        << "Cannot modify server migration support while the worker is running";
+        << "Cannot modify server migration support while the server is running";
     return false;
   }
   if (supportedProtocols.empty()) {
@@ -699,6 +702,21 @@ bool QuicServer::allowServerMigration(
     return false;
   }
   serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  return true;
+}
+
+bool QuicServer::setClientStateUpdateCallback(
+    ClientStateUpdateCallback* callback) {
+  if (started_) {
+    LOG(ERROR)
+        << "Cannot modify the client state update callback while the server is running";
+    return false;
+  }
+  if (callback == nullptr) {
+    LOG(ERROR) << "Null client state update callback";
+    return false;
+  }
+  clientStateUpdateCallback_ = callback;
   return true;
 }
 

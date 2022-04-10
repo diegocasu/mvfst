@@ -118,6 +118,14 @@ class QuicServerTransport
       std::unordered_set<ServerMigrationProtocol> supportedProtocols);
 
   /**
+   * Sets the callback to invoke when the server migration management
+   * interface should be informed about the change of a client's state.
+   * @param callback  the callback.
+   * @return          true if the callback has been set, false otherwise.
+   */
+  bool setClientStateUpdateCallback(ClientStateUpdateCallback* callback);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc).
    */

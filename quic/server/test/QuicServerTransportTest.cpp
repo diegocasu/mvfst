@@ -14,6 +14,7 @@
 #include <quic/fizz/server/handshake/FizzServerHandshake.h>
 #include <quic/logging/FileQLogger.h>
 #include <quic/server/handshake/ServerHandshake.h>
+#include <quic/servermigration/test/Mocks.h>
 #include <quic/state/QuicStreamFunctions.h>
 #include <quic/state/test/Mocks.h>
 
@@ -1726,6 +1727,12 @@ TEST_F(QuicServerTransportTest, TestAllowServerMigration) {
 
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
+}
+
+TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallback) {
+  EXPECT_FALSE(server->setClientStateUpdateCallback(nullptr));
+  MockClientStateUpdateCallback callback;
+  EXPECT_TRUE(server->setClientStateUpdateCallback(&callback));
 }
 
 class QuicServerTransportAllowMigrationTest

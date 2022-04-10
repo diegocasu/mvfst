@@ -303,6 +303,15 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
       std::unordered_set<ServerMigrationProtocol> supportedProtocols);
 
   /**
+   * Sets the callback to invoke when the server migration management
+   * interface should be informed about the change of a client's state.
+   * It has no effect if called after start().
+   * @param callback  the callback.
+   * @return          true if the callback has been set, false otherwise.
+   */
+  bool setClientStateUpdateCallback(ClientStateUpdateCallback* callback);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc). Since the callback is invoked very frequently and per thread, it is
    * important that the implementation is efficient.
@@ -670,6 +679,7 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
 
   folly::Optional<std::unordered_set<ServerMigrationProtocol>>
       serverMigrationSupportedProtocols_;
+  ClientStateUpdateCallback* clientStateUpdateCallback_{nullptr};
 };
 
 } // namespace quic

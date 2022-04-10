@@ -132,6 +132,21 @@ bool QuicServerWorker::allowServerMigration(
   return true;
 }
 
+bool QuicServerWorker::setClientStateUpdateCallback(
+    ClientStateUpdateCallback* callback) {
+  if (started_) {
+    LOG(ERROR)
+        << "Cannot modify the client state update callback while the worker is running";
+    return false;
+  }
+  if (callback == nullptr) {
+    LOG(ERROR) << "Null client state update callback";
+    return false;
+  }
+  clientStateUpdateCallback_ = callback;
+  return true;
+}
+
 void QuicServerWorker::setTransportStatsCallback(
     std::unique_ptr<QuicTransportStatsCallback> statsCallback) noexcept {
   CHECK(statsCallback);
@@ -706,6 +721,9 @@ void QuicServerWorker::dispatchPacketData(
           if (serverMigrationSupportedProtocols_) {
             trans->allowServerMigration(
                 serverMigrationSupportedProtocols_.value());
+          }
+          if (clientStateUpdateCallback_) {
+            trans->setClientStateUpdateCallback(clientStateUpdateCallback_);
           }
 
           if (transportSettings_.dataPathType ==

@@ -25,6 +25,7 @@
 #include <quic/server/handshake/StatelessResetGenerator.h>
 #include <quic/server/handshake/TokenGenerator.h>
 #include <quic/server/test/Mocks.h>
+#include <quic/servermigration/test/Mocks.h>
 #include <quic/state/test/MockQuicStats.h>
 
 using namespace testing;
@@ -151,6 +152,30 @@ TEST_F(SimpleQuicServerWorkerTest, TestRejectAllowServerMigrationAfterStart) {
 
   supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   EXPECT_FALSE(worker_->allowServerMigration(supportedProtocols));
+}
+
+TEST_F(SimpleQuicServerWorkerTest, TestSetClientStateUpdateCallback) {
+  workerCb_ = std::make_shared<NiceMock<MockWorkerCallback>>();
+  worker_ = std::make_unique<QuicServerWorker>(workerCb_);
+
+  EXPECT_FALSE(worker_->setClientStateUpdateCallback(nullptr));
+  MockClientStateUpdateCallback callback;
+  EXPECT_TRUE(worker_->setClientStateUpdateCallback(&callback));
+}
+
+TEST_F(SimpleQuicServerWorkerTest, TestRejectSetClientStateUpdateCallbackAfterStart) {
+  auto sock =
+      std::make_unique<NiceMock<folly::test::MockAsyncUDPSocket>>(&eventbase_);
+  rawSocket_ = sock.get();
+  workerCb_ = std::make_shared<NiceMock<MockWorkerCallback>>();
+  worker_ = std::make_unique<QuicServerWorker>(workerCb_);
+  worker_->setSocket(std::move(sock));
+  worker_->setSupportedVersions({QuicVersion::MVFST});
+
+  MockClientStateUpdateCallback callback;
+  EXPECT_TRUE(worker_->setClientStateUpdateCallback(&callback));
+  worker_->start();
+  EXPECT_FALSE(worker_->setClientStateUpdateCallback(&callback));
 }
 
 std::unique_ptr<folly::IOBuf> createData(size_t size) {
@@ -3185,6 +3210,21 @@ TEST_F(QuicServerTest, TestRejectAllowServerMigrationAfterStart) {
 
   supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   EXPECT_FALSE(server_->allowServerMigration(supportedProtocols));
+}
+
+TEST_F(QuicServerTest, TestSetClientStateUpdateCallback) {
+  EXPECT_FALSE(server_->setClientStateUpdateCallback(nullptr));
+  MockClientStateUpdateCallback callback;
+  EXPECT_TRUE(server_->setClientStateUpdateCallback(&callback));
+}
+
+TEST_F(QuicServerTest, TestRejectSetClientStateUpdateCallbackAfterStart) {
+  MockClientStateUpdateCallback callback;
+  EXPECT_TRUE(server_->setClientStateUpdateCallback(&callback));
+
+  folly::SocketAddress addr("::1", 0);
+  server_->start(addr, 0);
+  EXPECT_FALSE(server_->setClientStateUpdateCallback(&callback));
 }
 
 } // namespace test
