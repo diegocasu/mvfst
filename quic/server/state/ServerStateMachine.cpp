@@ -583,6 +583,12 @@ void onConnectionMigration(
   if (conn.qLogger) {
     conn.qLogger->addConnectionMigrationUpdate(isIntentional);
   }
+
+  if (conn.clientStateUpdateCallback) {
+    conn.clientStateUpdateCallback->onMigrationDetected(
+        conn.serverConnectionId.value(), newPeerAddress);
+  }
+
   conn.peerAddress = newPeerAddress;
 }
 

@@ -461,5 +461,59 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
   server.server->shutdown();
 }
 
+TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
+  folly::SocketAddress clientMigrationAddress("127.0.1.1", 50000);
+  ASSERT_NE(clientMigrationAddress.getIPAddress().str(), clientIP);
+
+  std::string serverCidHex;
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+
+  {
+    InSequence seq;
+    EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+        .Times(Exactly(1))
+        .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
+          serverCidHex = serverConnectionId.hex();
+        });
+    EXPECT_CALL(clientStateUpdateCallback, onMigrationDetected)
+        .Times(Exactly(1))
+        .WillOnce([&](ConnectionId serverConnectionId,
+                      folly::SocketAddress newClientAddress) {
+          EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+          EXPECT_EQ(clientMigrationAddress, newClientAddress);
+        });
+  }
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+  client.messageReceived.reset();
+
+  // Migrate client.
+  auto newClientSocket =
+      std::make_unique<folly::AsyncUDPSocket>(client.transport->getEventBase());
+  newClientSocket->bind(clientMigrationAddress);
+  client.transport->onNetworkSwitch(std::move(newClientSocket));
+
+  // Send a message from the new address.
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
 } // namespace test
 } // namespace quic
