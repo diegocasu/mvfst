@@ -366,5 +366,62 @@ class QuicServerMigrationIntegrationTestServer {
   std::unordered_set<ServerMigrationProtocol> migrationProtocols;
 };
 
+class QuicServerMigrationIntegrationTest : public Test {
+ public:
+  std::string serverIP{"127.0.0.1"};
+  uint16_t serverPort{50000};
+  std::string clientIP{"127.0.0.55"};
+  uint16_t clientPort{50001};
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
+};
+
+TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  auto compareWithExpectedClient =
+      [&](folly::SocketAddress clientAddress,
+          Unused,
+          folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+              negotiatedProtocols) {
+        EXPECT_EQ(clientAddress.getIPAddress().str(), clientIP);
+        EXPECT_EQ(clientAddress.getPort(), clientPort);
+
+        EXPECT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_EQ(negotiatedProtocols.value().size(), 1);
+        EXPECT_TRUE(negotiatedProtocols.value().count(
+            ServerMigrationProtocol::EXPLICIT));
+      };
+
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce(compareWithExpectedClient);
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  // Send a message and wait for the response to be sure that
+  // the server has finished the handshake.
+  client.send("ping");
+  client.messageReceived.wait();
+
+  // When the response to the previous message has been received,
+  // clientStateUpdateCallback should have been evaluated, so the test can end.
+  client.close();
+  server.server->shutdown();
+}
+
 } // namespace test
 } // namespace quic

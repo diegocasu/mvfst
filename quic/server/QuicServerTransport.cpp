@@ -568,6 +568,27 @@ void QuicServerTransport::maybeNotifyConnectionIdBound() {
 }
 
 void QuicServerTransport::maybeNotifyHandshakeFinished() {
+  if (serverConn_->serverConnectionId &&
+      serverConn_->serverHandshakeLayer->isHandshakeDone() &&
+      serverConn_->clientStateUpdateCallback &&
+      !notifiedClientStateUpdateHandshakeDone) {
+    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+        negotiatedProtocols;
+
+    if (serverConn_->serverMigrationNegotiator) {
+      negotiatedProtocols = serverConn_->serverMigrationNegotiator.value()
+                                .getNegotiatedProtocols();
+    }
+
+    serverConn_->clientStateUpdateCallback->onHandshakeFinished(
+        serverConn_->originalPeerAddress,
+        serverConn_->serverConnectionId.value(),
+        std::move(negotiatedProtocols));
+
+    // Avoid a second invocation of the callback.
+    notifiedClientStateUpdateHandshakeDone = true;
+  }
+
   if (handshakeFinishedCb_ &&
       serverConn_->serverHandshakeLayer->isHandshakeDone()) {
     handshakeFinishedCb_->onHandshakeFinished();

@@ -210,6 +210,7 @@ class QuicServerTransport
   bool notifiedConnIdBound_{false};
   bool newSessionTicketWritten_{false};
   bool connectionIdsIssued_{false};
+  bool notifiedClientStateUpdateHandshakeDone{false};
   QuicServerConnectionState* serverConn_;
   std::unordered_map<
       uint64_t,
