@@ -380,6 +380,13 @@ void QuicServerTransport::closeTransport() {
       handshakeFinishedCb_ = nullptr;
     }
   }
+
+  if (serverConn_->clientStateUpdateCallback &&
+      notifiedClientStateUpdateHandshakeDone) {
+    serverConn_->clientStateUpdateCallback->onConnectionClose(
+        serverConn_->serverConnectionId.value());
+  }
+
   serverConn_->serverHandshakeLayer->cancel();
   // Clear out pending data.
   serverConn_->pendingZeroRttData.reset();

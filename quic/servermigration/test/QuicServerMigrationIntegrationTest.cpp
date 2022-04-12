@@ -423,5 +423,43 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
   server.server->shutdown();
 }
 
+TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
+  std::string serverCidHex;
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+
+  {
+    InSequence seq;
+    EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+        .Times(Exactly(1))
+        .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
+          serverCidHex = serverConnectionId.hex();
+        });
+    EXPECT_CALL(clientStateUpdateCallback, onConnectionClose)
+        .Times(Exactly(1))
+        .WillOnce([&](ConnectionId serverConnectionId) {
+          EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+        });
+  }
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
 } // namespace test
 } // namespace quic
