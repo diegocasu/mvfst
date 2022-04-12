@@ -305,7 +305,11 @@ class QuicServerMigrationIntegrationTestServer {
 
   class ServerTransportFactory : public QuicServerTransportFactory {
    public:
-    ServerTransportFactory() = default;
+    ServerTransportFactory(
+        std::unordered_set<ServerMigrationProtocol> migrationProtocols,
+        ClientStateUpdateCallback* clientStateCallback)
+        : migrationProtocols(std::move(migrationProtocols)),
+          clientStateCallback(clientStateCallback){};
 
     ~ServerTransportFactory() override {
       while (!handlers.empty()) {
@@ -326,12 +330,29 @@ class QuicServerMigrationIntegrationTestServer {
       auto handler = std::make_unique<MessageHandler>(evb);
       auto transport = quic::QuicServerTransport::make(
           evb, std::move(sock), handler.get(), handler.get(), ctx);
+
+      if (!migrationProtocols.empty()) {
+        transport->allowServerMigration(migrationProtocols);
+      } else {
+        LOG(INFO)
+            << "Disabling support for server migration: no protocols available";
+      }
+
+      if (clientStateCallback) {
+        transport->setClientStateUpdateCallback(clientStateCallback);
+      } else {
+        LOG(INFO)
+            << "Disabling support for client state updates: no callback available";
+      }
+
       handler->setQuicSocket(transport);
       handlers.push_back(std::move(handler));
       return transport;
     }
 
     std::vector<std::unique_ptr<MessageHandler>> handlers;
+    std::unordered_set<ServerMigrationProtocol> migrationProtocols;
+    ClientStateUpdateCallback* clientStateCallback{nullptr};
   };
 
   QuicServerMigrationIntegrationTestServer(
@@ -341,10 +362,10 @@ class QuicServerMigrationIntegrationTestServer {
       ClientStateUpdateCallback* clientStateCallback)
       : host(std::move(host)),
         port(port),
-        server(QuicServer::createQuicServer()),
-        migrationProtocols(std::move(migrationProtocols)) {
+        server(QuicServer::createQuicServer()) {
     server->setQuicServerTransportFactory(
-        std::make_unique<ServerTransportFactory>());
+        std::make_unique<ServerTransportFactory>(
+            std::move(migrationProtocols), clientStateCallback));
 
     auto serverCtx = quic::test::createServerCtx();
     serverCtx->setClock(std::make_shared<fizz::SystemClock>());
@@ -353,20 +374,6 @@ class QuicServerMigrationIntegrationTestServer {
     TransportSettings settings;
     settings.disableMigration = false;
     server->setTransportSettings(settings);
-
-    if (!this->migrationProtocols.empty()) {
-      server->allowServerMigration(this->migrationProtocols);
-    } else {
-      LOG(INFO)
-          << "Disabling support for server migration: no protocols available";
-    }
-
-    if (clientStateCallback) {
-      server->setClientStateUpdateCallback(clientStateCallback);
-    } else {
-      LOG(INFO)
-          << "Disabling support for client state updates: no callback available";
-    }
   }
 
   ~QuicServerMigrationIntegrationTestServer() = default;
@@ -380,7 +387,6 @@ class QuicServerMigrationIntegrationTestServer {
   uint16_t port;
   std::shared_ptr<quic::QuicServer> server;
   folly::EventBase* evb;
-  std::unordered_set<ServerMigrationProtocol> migrationProtocols;
 };
 
 class QuicServerMigrationIntegrationTest : public Test {

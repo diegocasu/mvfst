@@ -117,36 +117,6 @@ void QuicServerWorker::setTransportSettingsOverrideFn(
   transportSettingsOverrideFn_ = std::move(fn);
 }
 
-bool QuicServerWorker::allowServerMigration(
-    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
-  if (started_) {
-    LOG(ERROR)
-        << "Cannot modify server migration support while the worker is running";
-    return false;
-  }
-  if (supportedProtocols.empty()) {
-    LOG(ERROR) << "No protocols specified for server migration";
-    return false;
-  }
-  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
-  return true;
-}
-
-bool QuicServerWorker::setClientStateUpdateCallback(
-    ClientStateUpdateCallback* callback) {
-  if (started_) {
-    LOG(ERROR)
-        << "Cannot modify the client state update callback while the worker is running";
-    return false;
-  }
-  if (callback == nullptr) {
-    LOG(ERROR) << "Null client state update callback";
-    return false;
-  }
-  clientStateUpdateCallback_ = callback;
-  return true;
-}
-
 void QuicServerWorker::setTransportStatsCallback(
     std::unique_ptr<QuicTransportStatsCallback> statsCallback) noexcept {
   CHECK(statsCallback);
@@ -192,7 +162,6 @@ void QuicServerWorker::start() {
       fmt::ptr(this),
       folly::getCurrentThreadID(),
       (int)processId_);
-  started_ = true;
 }
 
 void QuicServerWorker::pauseRead() {
@@ -717,15 +686,6 @@ void QuicServerWorker::dispatchPacketData(
         } else {
           globalUnfinishedHandshakes++;
           CHECK(trans);
-
-          if (serverMigrationSupportedProtocols_) {
-            trans->allowServerMigration(
-                serverMigrationSupportedProtocols_.value());
-          }
-          if (clientStateUpdateCallback_) {
-            trans->setClientStateUpdateCallback(clientStateUpdateCallback_);
-          }
-
           if (transportSettings_.dataPathType ==
                   DataPathType::ContinuousMemory &&
               bufAccessor_) {

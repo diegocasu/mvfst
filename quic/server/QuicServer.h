@@ -312,26 +312,6 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
   TakeoverProtocolVersion getTakeoverProtocolVersion() const noexcept;
 
   /**
-   * Enables the server-side support for server migration for the
-   * server. It has no effect if called after start().
-   * @param supportedProtocols  the set of protocols that are supported
-   *                            by the server. The set must be non-empty.
-   * @return                    true if the server migration support has been
-   *                            enabled, false otherwise.
-   */
-  bool allowServerMigration(
-      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
-
-  /**
-   * Sets the callback to invoke when the server migration management
-   * interface should be informed about the change of a client's state.
-   * It has no effect if called after start().
-   * @param callback  the callback.
-   * @return          true if the callback has been set, false otherwise.
-   */
-  bool setClientStateUpdateCallback(ClientStateUpdateCallback* callback);
-
-  /**
    * Factory to create per worker callback for various transport stats (such as
    * packet received, dropped etc). QuicServer calls 'make' during the
    * initialization _for each worker_.
@@ -493,13 +473,6 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
   // in case there are multiple concurrent instances (e.g. when proxygen is
   // migrating connections and there are two concurrent instances of proxygen)
   uint64_t ccpId_{0};
-
-  // Used to determine if start() has been called or not.
-  bool started_{false};
-
-  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
-      serverMigrationSupportedProtocols_;
-  ClientStateUpdateCallback* clientStateUpdateCallback_{nullptr};
 };
 
 } // namespace quic
