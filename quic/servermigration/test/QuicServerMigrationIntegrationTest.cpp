@@ -142,7 +142,13 @@ class QuicServerMigrationIntegrationTestClient
       TransportSettings settings;
       transport->setTransportSettings(settings);
 
-      transport->allowServerMigration(migrationProtocols);
+      if (!migrationProtocols.empty()) {
+        transport->allowServerMigration(migrationProtocols);
+      } else {
+        LOG(INFO)
+            << "Disabling support for server migration: no protocols available";
+      }
+
       transport->start(this, this);
     });
   }
@@ -348,8 +354,19 @@ class QuicServerMigrationIntegrationTestServer {
     settings.disableMigration = false;
     server->setTransportSettings(settings);
 
-    server->allowServerMigration(this->migrationProtocols);
-    server->setClientStateUpdateCallback(clientStateCallback);
+    if (!this->migrationProtocols.empty()) {
+      server->allowServerMigration(this->migrationProtocols);
+    } else {
+      LOG(INFO)
+          << "Disabling support for server migration: no protocols available";
+    }
+
+    if (clientStateCallback) {
+      server->setClientStateUpdateCallback(clientStateCallback);
+    } else {
+      LOG(INFO)
+          << "Disabling support for client state updates: no callback available";
+    }
   }
 
   ~QuicServerMigrationIntegrationTestServer() = default;
@@ -508,6 +525,121 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
   client.transport->onNetworkSwitch(std::move(newClientSocket));
 
   // Send a message from the new address.
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused,
+                    Unused,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        EXPECT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_EQ(negotiatedProtocols.value().size(), 2);
+        EXPECT_TRUE(negotiatedProtocols.value().count(
+            ServerMigrationProtocol::SYMMETRIC));
+        EXPECT_TRUE(negotiatedProtocols.value().count(
+            ServerMigrationProtocol::POOL_OF_ADDRESSES));
+      });
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused,
+                    Unused,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        EXPECT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_TRUE(negotiatedProtocols.value().empty());
+      });
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
+  // serverSupportedProtocols and clientSupportedProtocols are left empty,
+  // so the server migration support is automatically disabled
+  // by the test classes.
+
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused,
+                    Unused,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        EXPECT_FALSE(negotiatedProtocols.has_value());
+      });
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
   client.send("ping");
   client.messageReceived.wait();
 
