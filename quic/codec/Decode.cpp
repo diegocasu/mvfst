@@ -708,6 +708,46 @@ DatagramFrame decodeDatagramFrame(BufQueue& queue, bool hasLen) {
   return DatagramFrame(length, queue.splitAtMost(length));
 }
 
+ServerMigrationFrame decodeServerMigrationFrame(folly::io::Cursor& cursor) {
+  if (!cursor.canAdvance(folly::IPAddressV4::byteCount())) {
+    throw QuicTransportException(
+        "Not enough input bytes to read IPv4 address",
+        quic::TransportErrorCode::FRAME_ENCODING_ERROR,
+        quic::FrameType::SERVER_MIGRATION);
+  }
+  std::vector<uint8_t> ipv4Bytes(folly::IPAddressV4::byteCount());
+  cursor.pull(ipv4Bytes.data(), folly::IPAddressV4::byteCount());
+  auto ipv4Address = folly::IPAddressV4::fromBinary(ipv4Bytes);
+
+  if (!cursor.canAdvance(sizeof(uint16_t))) {
+    throw QuicTransportException(
+        "Not enough input bytes to read IPv4 port",
+        quic::TransportErrorCode::FRAME_ENCODING_ERROR,
+        quic::FrameType::SERVER_MIGRATION);
+  }
+  auto ipv4Port = cursor.readBE<uint16_t>();
+
+  if (!cursor.canAdvance(folly::IPAddressV6::byteCount())) {
+    throw QuicTransportException(
+        "Not enough input bytes to read IPv6 address",
+        quic::TransportErrorCode::FRAME_ENCODING_ERROR,
+        quic::FrameType::SERVER_MIGRATION);
+  }
+  std::vector<uint8_t> ipv6Bytes(folly::IPAddressV6::byteCount());
+  cursor.pull(ipv6Bytes.data(), folly::IPAddressV6::byteCount());
+  auto ipv6Address = folly::IPAddressV6::fromBinary(ipv6Bytes);
+
+  if (!cursor.canAdvance(sizeof(uint16_t))) {
+    throw QuicTransportException(
+        "Not enough input bytes to read IPv6 port",
+        quic::TransportErrorCode::FRAME_ENCODING_ERROR,
+        quic::FrameType::SERVER_MIGRATION);
+  }
+  auto ipv6Port = cursor.readBE<uint16_t>();
+
+  return ServerMigrationFrame(ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+}
+
 QuicFrame parseFrame(
     BufQueue& queue,
     const PacketHeader& header,
@@ -800,6 +840,9 @@ QuicFrame parseFrame(
         return QuicFrame(decodeKnobFrame(cursor));
       case FrameType::ACK_FREQUENCY:
         return QuicFrame(decodeAckFrequencyFrame(cursor));
+      case FrameType::SERVER_MIGRATION:
+        return QuicFrame(
+            QuicServerMigrationFrame(decodeServerMigrationFrame(cursor)));
     }
   } catch (const std::exception&) {
     error = true;

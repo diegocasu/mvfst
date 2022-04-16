@@ -317,6 +317,42 @@ folly::Optional<AckFrameWriteResult> writeAckFrame(
       1 + numAdditionalAckBlocks);
 }
 
+size_t writeServerMigrationFrame(
+    QuicServerMigrationFrame&& frame,
+    PacketBuilderInterface& builder) {
+  uint64_t spaceLeft = builder.remainingSpaceInPkt();
+
+  switch (frame.type()) {
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      ServerMigrationFrame& serverMigrationFrame =
+          *frame.asServerMigrationFrame();
+      QuicInteger frameType(static_cast<uint8_t>(FrameType::SERVER_MIGRATION));
+      auto serverMigrationFrameSize = frameType.getSize() +
+          serverMigrationFrame.ipv4Address.byteCount() +
+          sizeof(serverMigrationFrame.ipv4Port) +
+          serverMigrationFrame.ipv6Address.byteCount() +
+          sizeof(serverMigrationFrame.ipv6Port);
+
+      if (packetSpaceCheck(spaceLeft, serverMigrationFrameSize)) {
+        builder.write(frameType);
+        builder.push(
+            serverMigrationFrame.ipv4Address.bytes(),
+            serverMigrationFrame.ipv4Address.byteCount());
+        builder.writeBE(serverMigrationFrame.ipv4Port);
+        builder.push(
+            serverMigrationFrame.ipv6Address.bytes(),
+            serverMigrationFrame.ipv6Address.byteCount());
+        builder.writeBE(serverMigrationFrame.ipv6Port);
+        builder.appendFrame(QuicSimpleFrame(std::move(serverMigrationFrame)));
+        return serverMigrationFrameSize;
+      }
+      // no space left in packet
+      return size_t(0);
+    }
+  }
+  folly::assume_unreachable();
+}
+
 size_t writeSimpleFrame(
     QuicSimpleFrame&& frame,
     PacketBuilderInterface& builder) {
@@ -325,6 +361,10 @@ size_t writeSimpleFrame(
   uint64_t spaceLeft = builder.remainingSpaceInPkt();
 
   switch (frame.type()) {
+    case QuicSimpleFrame::Type::QuicServerMigrationFrame: {
+      return writeServerMigrationFrame(
+          std::move(*frame.asQuicServerMigrationFrame()), builder);
+    }
     case QuicSimpleFrame::Type::StopSendingFrame: {
       const StopSendingFrame& stopSendingFrame = *frame.asStopSendingFrame();
       QuicInteger intFrameType(static_cast<uint8_t>(FrameType::STOP_SENDING));

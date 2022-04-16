@@ -430,6 +430,8 @@ std::string toString(FrameType frame) {
       return "KNOB";
     case FrameType::ACK_FREQUENCY:
       return "ACK_FREQUENCY";
+    case FrameType::SERVER_MIGRATION:
+      return "SERVER_MIGRATION";
   }
   LOG(WARNING) << "toString has unhandled frame type";
   return "UNKNOWN";
