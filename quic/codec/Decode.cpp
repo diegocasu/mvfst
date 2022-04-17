@@ -748,6 +748,10 @@ ServerMigrationFrame decodeServerMigrationFrame(folly::io::Cursor& cursor) {
   return ServerMigrationFrame(ipv4Address, ipv4Port, ipv6Address, ipv6Port);
 }
 
+ServerMigratedFrame decodeServerMigratedFrame(folly::io::Cursor& /*cursor*/) {
+  return ServerMigratedFrame();
+}
+
 QuicFrame parseFrame(
     BufQueue& queue,
     const PacketHeader& header,
@@ -843,6 +847,9 @@ QuicFrame parseFrame(
       case FrameType::SERVER_MIGRATION:
         return QuicFrame(
             QuicServerMigrationFrame(decodeServerMigrationFrame(cursor)));
+      case FrameType::SERVER_MIGRATED:
+        return QuicFrame(
+            QuicServerMigrationFrame(decodeServerMigratedFrame(cursor)));
     }
   } catch (const std::exception&) {
     error = true;

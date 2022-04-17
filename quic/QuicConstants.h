@@ -190,6 +190,7 @@ enum class FrameType : uint64_t {
   KNOB = 0x1550,
   ACK_FREQUENCY = 0xAF,
   SERVER_MIGRATION = 0x32,
+  SERVER_MIGRATED = 0x33,
 };
 
 inline constexpr uint16_t toFrameError(FrameType frame) {

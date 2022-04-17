@@ -139,6 +139,8 @@ DatagramFrame decodeDatagramFrame(BufQueue& queue, bool hasLen);
 
 ServerMigrationFrame decodeServerMigrationFrame(folly::io::Cursor& cursor);
 
+ServerMigratedFrame decodeServerMigratedFrame(folly::io::Cursor& cursor);
+
 /**
  * Parse the Invariant fields in Long Header.
  *

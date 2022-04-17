@@ -1673,5 +1673,33 @@ TEST_F(QuicWriteCodecTest, TestWriteServerMigrationFrame) {
   EXPECT_EQ(queue.chainLength(), 0);
 }
 
+TEST_F(QuicWriteCodecTest, TestWriteServerMigratedFrame) {
+  MockQuicPacketBuilder pktBuilder;
+  setupCommonExpects(pktBuilder);
+  auto bytesWritten =
+      writeServerMigrationFrame(ServerMigratedFrame(), pktBuilder);
+
+  auto builtOut = std::move(pktBuilder).buildTestPacket();
+  auto regularPacket = builtOut.first;
+  EXPECT_EQ(bytesWritten, 1);
+  EXPECT_NE(
+      regularPacket.frames[0]
+          .asQuicSimpleFrame()
+          ->asQuicServerMigrationFrame()
+          ->asServerMigratedFrame(),
+      nullptr);
+
+  auto wireBuf = std::move(builtOut.second);
+  BufQueue queue;
+  queue.append(wireBuf->clone());
+  QuicFrame decodedFrame = parseQuicFrame(queue);
+  EXPECT_NE(
+      decodedFrame.asQuicSimpleFrame()
+          ->asQuicServerMigrationFrame()
+          ->asServerMigratedFrame(),
+      nullptr);
+  EXPECT_EQ(queue.chainLength(), 0);
+}
+
 } // namespace test
 } // namespace quic

@@ -349,6 +349,17 @@ size_t writeServerMigrationFrame(
       // no space left in packet
       return size_t(0);
     }
+    case QuicServerMigrationFrame::Type::ServerMigratedFrame: {
+      ServerMigratedFrame& serverMigratedFrame = *frame.asServerMigratedFrame();
+      QuicInteger frameType(static_cast<uint8_t>(FrameType::SERVER_MIGRATED));
+      if (packetSpaceCheck(spaceLeft, frameType.getSize())) {
+        builder.write(frameType);
+        builder.appendFrame(QuicSimpleFrame(std::move(serverMigratedFrame)));
+        return frameType.getSize();
+      }
+      // no space left in packet
+      return size_t(0);
+    }
   }
   folly::assume_unreachable();
 }

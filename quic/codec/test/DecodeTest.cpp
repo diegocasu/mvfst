@@ -815,8 +815,7 @@ TEST_F(DecodeTest, TestDecodeOneAddressFamilyServerMigrationFrame) {
   folly::IPAddressV6 emptyIpv6Address("::");
   uint16_t emptyIpv6Port = 0;
 
-  auto serverMigrationFrame =
-      createServerMigrationFrame(ipv4Address, ipv4Port);
+  auto serverMigrationFrame = createServerMigrationFrame(ipv4Address, ipv4Port);
   folly::io::Cursor cursor(serverMigrationFrame.get());
   auto decodedFrame = decodeServerMigrationFrame(cursor);
 
@@ -832,8 +831,7 @@ TEST_F(DecodeTest, TestDecodeAllZeroServerMigrationFrame) {
   folly::IPAddressV6 emptyIpv6Address("::");
   uint16_t emptyIpv6Port = 0;
 
-  auto serverMigrationFrame =
-      createServerMigrationFrame();
+  auto serverMigrationFrame = createServerMigrationFrame();
   folly::io::Cursor cursor(serverMigrationFrame.get());
   auto decodedFrame = decodeServerMigrationFrame(cursor);
 
@@ -841,6 +839,15 @@ TEST_F(DecodeTest, TestDecodeAllZeroServerMigrationFrame) {
   EXPECT_EQ(decodedFrame.ipv4Port, emptyIpv4Port);
   EXPECT_EQ(decodedFrame.ipv6Address, emptyIpv6Address);
   EXPECT_EQ(decodedFrame.ipv6Port, emptyIpv6Port);
+}
+
+TEST_F(DecodeTest, TestDecodeServerMigratedFrame) {
+  auto buf = folly::IOBuf::create(sizeof(UnderlyingFrameType));
+  buf->append(1);
+  memset(buf->writableData(), 0, 1);
+
+  folly::io::Cursor cursor(buf.get());
+  decodeServerMigratedFrame(cursor);
 }
 
 } // namespace test

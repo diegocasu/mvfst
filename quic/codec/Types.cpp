@@ -432,6 +432,8 @@ std::string toString(FrameType frame) {
       return "ACK_FREQUENCY";
     case FrameType::SERVER_MIGRATION:
       return "SERVER_MIGRATION";
+    case FrameType::SERVER_MIGRATED:
+      return "SERVER_MIGRATED";
   }
   LOG(WARNING) << "toString has unhandled frame type";
   return "UNKNOWN";

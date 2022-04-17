@@ -812,7 +812,17 @@ struct ServerMigrationFrame : QuicFrameCarryingAddress {
   ~ServerMigrationFrame() override = default;
 };
 
-#define QUIC_SERVER_MIGRATION_FRAME(F, ...) F(ServerMigrationFrame, __VA_ARGS__)
+struct ServerMigratedFrame {
+  ServerMigratedFrame() = default;
+
+  bool operator==(const ServerMigratedFrame& /*rhs*/) const {
+    return true;
+  }
+};
+
+#define QUIC_SERVER_MIGRATION_FRAME(F, ...) \
+  F(ServerMigrationFrame, __VA_ARGS__)      \
+  F(ServerMigratedFrame, __VA_ARGS__)
 
 DECLARE_VARIANT_TYPE(QuicServerMigrationFrame, QUIC_SERVER_MIGRATION_FRAME)
 
