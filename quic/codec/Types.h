@@ -820,9 +820,35 @@ struct ServerMigratedFrame {
   }
 };
 
+struct PoolMigrationAddressFrame : QuicFrameCarryingAddress {
+  explicit PoolMigrationAddressFrame(const folly::SocketAddress& address)
+      : QuicFrameCarryingAddress(address) {}
+
+  PoolMigrationAddressFrame(
+      const folly::SocketAddress& addressV4,
+      const folly::SocketAddress& addressV6)
+      : QuicFrameCarryingAddress(addressV4, addressV6) {}
+
+  explicit PoolMigrationAddressFrame(
+      const folly::IPAddress& address,
+      const uint16_t& port)
+      : QuicFrameCarryingAddress(address, port) {}
+
+  explicit PoolMigrationAddressFrame(
+      const folly::IPAddressV4& ipv4Address,
+      const uint16_t& ipv4Port,
+      const folly::IPAddressV6& ipv6Address,
+      const uint16_t& ipv6Port)
+      : QuicFrameCarryingAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port) {
+  }
+
+  ~PoolMigrationAddressFrame() override = default;
+};
+
 #define QUIC_SERVER_MIGRATION_FRAME(F, ...) \
   F(ServerMigrationFrame, __VA_ARGS__)      \
-  F(ServerMigratedFrame, __VA_ARGS__)
+  F(ServerMigratedFrame, __VA_ARGS__)       \
+  F(PoolMigrationAddressFrame, __VA_ARGS__)
 
 DECLARE_VARIANT_TYPE(QuicServerMigrationFrame, QUIC_SERVER_MIGRATION_FRAME)
 

@@ -141,6 +141,9 @@ ServerMigrationFrame decodeServerMigrationFrame(folly::io::Cursor& cursor);
 
 ServerMigratedFrame decodeServerMigratedFrame(folly::io::Cursor& cursor);
 
+PoolMigrationAddressFrame decodePoolMigrationAddressFrame(
+    folly::io::Cursor& cursor);
+
 /**
  * Parse the Invariant fields in Long Header.
  *

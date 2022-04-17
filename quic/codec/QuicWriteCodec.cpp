@@ -360,6 +360,34 @@ size_t writeServerMigrationFrame(
       // no space left in packet
       return size_t(0);
     }
+    case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame: {
+      PoolMigrationAddressFrame& poolMigrationAddressFrame =
+          *frame.asPoolMigrationAddressFrame();
+      QuicInteger frameType(
+          static_cast<uint8_t>(FrameType::POOL_MIGRATION_ADDRESS));
+      auto poolMigrationAddressFrameSize = frameType.getSize() +
+          poolMigrationAddressFrame.ipv4Address.byteCount() +
+          sizeof(poolMigrationAddressFrame.ipv4Port) +
+          poolMigrationAddressFrame.ipv6Address.byteCount() +
+          sizeof(poolMigrationAddressFrame.ipv6Port);
+
+      if (packetSpaceCheck(spaceLeft, poolMigrationAddressFrameSize)) {
+        builder.write(frameType);
+        builder.push(
+            poolMigrationAddressFrame.ipv4Address.bytes(),
+            poolMigrationAddressFrame.ipv4Address.byteCount());
+        builder.writeBE(poolMigrationAddressFrame.ipv4Port);
+        builder.push(
+            poolMigrationAddressFrame.ipv6Address.bytes(),
+            poolMigrationAddressFrame.ipv6Address.byteCount());
+        builder.writeBE(poolMigrationAddressFrame.ipv6Port);
+        builder.appendFrame(
+            QuicSimpleFrame(std::move(poolMigrationAddressFrame)));
+        return poolMigrationAddressFrameSize;
+      }
+      // no space left in packet
+      return size_t(0);
+    }
   }
   folly::assume_unreachable();
 }

@@ -434,6 +434,8 @@ std::string toString(FrameType frame) {
       return "SERVER_MIGRATION";
     case FrameType::SERVER_MIGRATED:
       return "SERVER_MIGRATED";
+    case FrameType::POOL_MIGRATION_ADDRESS:
+      return "POOL_MIGRATION_ADDRESS";
   }
   LOG(WARNING) << "toString has unhandled frame type";
   return "UNKNOWN";

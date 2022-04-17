@@ -1701,5 +1701,54 @@ TEST_F(QuicWriteCodecTest, TestWriteServerMigratedFrame) {
   EXPECT_EQ(queue.chainLength(), 0);
 }
 
+TEST_F(QuicWriteCodecTest, TestWritePoolMigrationAddressFrame) {
+  MockQuicPacketBuilder pktBuilder;
+  setupCommonExpects(pktBuilder);
+
+  folly::IPAddressV4 ipv4Address("127.0.0.1");
+  uint16_t ipv4Port = 5000;
+  folly::IPAddressV6 ipv6Address("::1");
+  uint16_t ipv6Port = 5001;
+
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+  auto bytesWritten =
+      writeServerMigrationFrame(poolMigrationAddressFrame, pktBuilder);
+
+  QuicInteger frameType(
+      static_cast<uint8_t>(FrameType::POOL_MIGRATION_ADDRESS));
+  auto poolMigrationAddressFrameSize = frameType.getSize() +
+      poolMigrationAddressFrame.ipv4Address.byteCount() +
+      sizeof(poolMigrationAddressFrame.ipv4Port) +
+      poolMigrationAddressFrame.ipv6Address.byteCount() +
+      sizeof(poolMigrationAddressFrame.ipv6Port);
+  EXPECT_EQ(bytesWritten, poolMigrationAddressFrameSize);
+
+  auto builtOut = std::move(pktBuilder).buildTestPacket();
+  auto regularPacket = builtOut.first;
+  PoolMigrationAddressFrame result = *regularPacket.frames[0]
+                                          .asQuicSimpleFrame()
+                                          ->asQuicServerMigrationFrame()
+                                          ->asPoolMigrationAddressFrame();
+  EXPECT_EQ(result.ipv4Address, ipv4Address);
+  EXPECT_EQ(result.ipv4Port, ipv4Port);
+  EXPECT_EQ(result.ipv6Address, ipv6Address);
+  EXPECT_EQ(result.ipv6Port, ipv6Port);
+
+  auto wireBuf = std::move(builtOut.second);
+  BufQueue queue;
+  queue.append(wireBuf->clone());
+  QuicFrame decodedFrame = parseQuicFrame(queue);
+  PoolMigrationAddressFrame wirePoolMigrationAddressFrame =
+      *decodedFrame.asQuicSimpleFrame()
+           ->asQuicServerMigrationFrame()
+           ->asPoolMigrationAddressFrame();
+  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv4Address, ipv4Address);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv4Port, ipv4Port);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv6Address, ipv6Address);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv6Port, ipv6Port);
+  EXPECT_EQ(queue.chainLength(), 0);
+}
+
 } // namespace test
 } // namespace quic
