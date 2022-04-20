@@ -99,10 +99,13 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
   // Current state of connection migration
   ConnectionMigrationState migrationState;
 
-  folly::Optional<QuicServerMigrationNegotiatorServer>
-      serverMigrationNegotiator;
+  struct ServerMigrationState {
+    folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
+    ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
+    bool notifiedHandshakeDone{false};
+  };
 
-  ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
+  ServerMigrationState serverMigrationState;
 
   // Parameters to generate server chosen connection id
   folly::Optional<ServerConnectionIdParams> serverConnIdParams;

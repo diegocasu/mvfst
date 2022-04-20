@@ -144,11 +144,8 @@ bool QuicServerTransport::allowServerMigration(
     LOG(ERROR) << "No protocols specified for server migration";
     return false;
   }
-
-  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
-  QuicServerMigrationNegotiatorServer negotiator(
-      serverMigrationSupportedProtocols_.value());
-  serverConn_->serverMigrationNegotiator = std::move((negotiator));
+  serverConn_->serverMigrationState.negotiator =
+      QuicServerMigrationNegotiatorServer(std::move(supportedProtocols));
   return true;
 }
 
@@ -158,7 +155,7 @@ bool QuicServerTransport::setClientStateUpdateCallback(
     LOG(ERROR) << "Null client state update callback";
     return false;
   }
-  serverConn_->clientStateUpdateCallback = callback;
+  serverConn_->serverMigrationState.clientStateUpdateCallback = callback;
   return true;
 }
 
@@ -381,10 +378,10 @@ void QuicServerTransport::closeTransport() {
     }
   }
 
-  if (serverConn_->clientStateUpdateCallback &&
-      notifiedClientStateUpdateHandshakeDone) {
-    serverConn_->clientStateUpdateCallback->onConnectionClose(
-        serverConn_->serverConnectionId.value());
+  if (serverConn_->serverMigrationState.clientStateUpdateCallback &&
+      serverConn_->serverMigrationState.notifiedHandshakeDone) {
+    serverConn_->serverMigrationState.clientStateUpdateCallback
+        ->onConnectionClose(serverConn_->serverConnectionId.value());
   }
 
   serverConn_->serverHandshakeLayer->cancel();
@@ -577,23 +574,24 @@ void QuicServerTransport::maybeNotifyConnectionIdBound() {
 void QuicServerTransport::maybeNotifyHandshakeFinished() {
   if (serverConn_->serverConnectionId &&
       serverConn_->serverHandshakeLayer->isHandshakeDone() &&
-      serverConn_->clientStateUpdateCallback &&
-      !notifiedClientStateUpdateHandshakeDone) {
+      serverConn_->serverMigrationState.clientStateUpdateCallback &&
+      !serverConn_->serverMigrationState.notifiedHandshakeDone) {
     folly::Optional<std::unordered_set<ServerMigrationProtocol>>
         negotiatedProtocols;
 
-    if (serverConn_->serverMigrationNegotiator) {
-      negotiatedProtocols = serverConn_->serverMigrationNegotiator.value()
+    if (serverConn_->serverMigrationState.negotiator) {
+      negotiatedProtocols = serverConn_->serverMigrationState.negotiator.value()
                                 .getNegotiatedProtocols();
     }
 
-    serverConn_->clientStateUpdateCallback->onHandshakeFinished(
-        serverConn_->originalPeerAddress,
-        serverConn_->serverConnectionId.value(),
-        std::move(negotiatedProtocols));
+    serverConn_->serverMigrationState.clientStateUpdateCallback
+        ->onHandshakeFinished(
+            serverConn_->originalPeerAddress,
+            serverConn_->serverConnectionId.value(),
+            std::move(negotiatedProtocols));
 
     // Avoid a second invocation of the callback.
-    notifiedClientStateUpdateHandshakeDone = true;
+    serverConn_->serverMigrationState.notifiedHandshakeDone = true;
   }
 
   if (handshakeFinishedCb_ &&

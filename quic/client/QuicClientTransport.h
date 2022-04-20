@@ -255,10 +255,9 @@ class QuicClientTransport
   void setSupportedExtensionTransportParameters();
 
   /**
-   * Instantiates the server migration protocol negotiator and adds the
-   * server_migration_suite transport parameter to the list of custom transport
-   * parameters sent by the client. If the support for server migration
-   * is not enabled, it does nothing.
+   * Adds the server_migration_suite transport parameter to the list of
+   * custom transport parameters sent by the client, if the support for
+   * server migration is enabled.
    */
   void setServerMigrationTransportParameter();
 
@@ -289,8 +288,5 @@ class QuicClientTransport
   bool transportKnobsSent_{false};
   // Callback function to invoke when the client receives a new token
   std::function<void(std::string)> newTokenCallback_;
-
-  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
-      serverMigrationSupportedProtocols_;
 };
 } // namespace quic

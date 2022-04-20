@@ -210,13 +210,10 @@ class QuicServerTransport
   bool notifiedConnIdBound_{false};
   bool newSessionTicketWritten_{false};
   bool connectionIdsIssued_{false};
-  bool notifiedClientStateUpdateHandshakeDone{false};
   QuicServerConnectionState* serverConn_;
   std::unordered_map<
       uint64_t,
       std::function<void(QuicServerTransport*, uint64_t)>>
       transportKnobParamHandlers_;
-  folly::Optional<std::unordered_set<ServerMigrationProtocol>>
-      serverMigrationSupportedProtocols_;
 };
 } // namespace quic

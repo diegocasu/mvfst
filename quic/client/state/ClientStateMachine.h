@@ -58,8 +58,11 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
   std::shared_ptr<ClientHandshakeFactory> handshakeFactory;
   ClientHandshake* clientHandshakeLayer;
 
-  folly::Optional<QuicServerMigrationNegotiatorClient>
-      serverMigrationNegotiator;
+  struct ServerMigrationState {
+    folly::Optional<QuicServerMigrationNegotiatorClient> negotiator;
+  };
+
+  ServerMigrationState serverMigrationState;
 
   folly::Optional<TimePoint> lastCloseSentTime;
 

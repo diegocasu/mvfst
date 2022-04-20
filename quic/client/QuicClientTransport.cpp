@@ -1747,12 +1747,10 @@ void QuicClientTransport::setSupportedExtensionTransportParameters() {
 }
 
 void QuicClientTransport::setServerMigrationTransportParameter() {
-  if (serverMigrationSupportedProtocols_) {
-    QuicServerMigrationNegotiatorClient negotiator(
-        serverMigrationSupportedProtocols_.value());
-    clientConn_->serverMigrationNegotiator = std::move(negotiator);
-    customTransportParameters_.push_back(clientConn_->serverMigrationNegotiator
-                                             ->onTransportParametersEncoding());
+  if (clientConn_->serverMigrationState.negotiator) {
+    customTransportParameters_.push_back(
+        clientConn_->serverMigrationState.negotiator
+            ->onTransportParametersEncoding());
   }
 }
 
@@ -1795,8 +1793,8 @@ bool QuicClientTransport::allowServerMigration(
     LOG(ERROR) << "No protocols specified for server migration";
     return false;
   }
-
-  serverMigrationSupportedProtocols_ = std::move(supportedProtocols);
+  clientConn_->serverMigrationState.negotiator =
+      QuicServerMigrationNegotiatorClient(std::move(supportedProtocols));
   return true;
 }
 

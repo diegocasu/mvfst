@@ -584,8 +584,8 @@ void onConnectionMigration(
     conn.qLogger->addConnectionMigrationUpdate(isIntentional);
   }
 
-  if (conn.clientStateUpdateCallback) {
-    conn.clientStateUpdateCallback->onMigrationDetected(
+  if (conn.serverMigrationState.clientStateUpdateCallback) {
+    conn.serverMigrationState.clientStateUpdateCallback->onMigrationDetected(
         conn.serverConnectionId.value(), newPeerAddress);
   }
 
@@ -751,9 +751,9 @@ void onServerReadDataFromOpen(
             initialDestinationConnectionId,
             customTransportParams);
 
-    if (conn.serverMigrationNegotiator) {
+    if (conn.serverMigrationState.negotiator) {
       serverTransportParamsExtension->setServerMigrationSuiteNegotiator(
-          &conn.serverMigrationNegotiator.value());
+          &conn.serverMigrationState.negotiator.value());
     }
 
     QUIC_STATS(conn.statsCallback, onStatelessReset);
