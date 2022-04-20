@@ -292,7 +292,7 @@ TEST_F(PacketHeaderTest, ShortHeader) {
   EXPECT_EQ(readHeader.asShort()->getConnectionId(), connid);
 }
 
-class QuicFrameCarryingAddressTest : public Test {
+class QuicIPAddressTest : public Test {
  public:
   folly::IPAddressV4 ipv4Address{"127.0.0.1"};
   uint16_t ipv4Port{5000};
@@ -307,50 +307,48 @@ class QuicFrameCarryingAddressTest : public Test {
   uint16_t emptyPort = 0;
 };
 
-TEST_F(QuicFrameCarryingAddressTest, TestInitializationWithSingleFamily) {
-  QuicFrameCarryingAddress frameFromIpv4(ipv4Address, ipv4Port);
-  EXPECT_EQ(frameFromIpv4.ipv4Address, ipv4Address);
-  EXPECT_EQ(frameFromIpv4.ipv4Port, ipv4Port);
-  EXPECT_EQ(frameFromIpv4.ipv6Address, ipv6AddressEmpty);
-  EXPECT_EQ(frameFromIpv4.ipv6Port, emptyPort);
+TEST_F(QuicIPAddressTest, TestInitializationWithSingleFamily) {
+  QuicIPAddress fromIpv4(ipv4Address, ipv4Port);
+  EXPECT_EQ(fromIpv4.ipv4Address, ipv4Address);
+  EXPECT_EQ(fromIpv4.ipv4Port, ipv4Port);
+  EXPECT_EQ(fromIpv4.ipv6Address, ipv6AddressEmpty);
+  EXPECT_EQ(fromIpv4.ipv6Port, emptyPort);
 
-  QuicFrameCarryingAddress frameFromIpv4WithSockAddr(ipv4SocketAddress);
-  EXPECT_EQ(frameFromIpv4WithSockAddr.ipv4Address, ipv4Address);
-  EXPECT_EQ(frameFromIpv4WithSockAddr.ipv4Port, ipv4Port);
-  EXPECT_EQ(frameFromIpv4WithSockAddr.ipv6Address, ipv6AddressEmpty);
-  EXPECT_EQ(frameFromIpv4WithSockAddr.ipv6Port, emptyPort);
+  QuicIPAddress fromIpv4WithSockAddr(ipv4SocketAddress);
+  EXPECT_EQ(fromIpv4WithSockAddr.ipv4Address, ipv4Address);
+  EXPECT_EQ(fromIpv4WithSockAddr.ipv4Port, ipv4Port);
+  EXPECT_EQ(fromIpv4WithSockAddr.ipv6Address, ipv6AddressEmpty);
+  EXPECT_EQ(fromIpv4WithSockAddr.ipv6Port, emptyPort);
 
-  QuicFrameCarryingAddress frameFromIpv6(ipv6Address, ipv6Port);
-  EXPECT_EQ(frameFromIpv6.ipv4Address, ipv4AddressEmpty);
-  EXPECT_EQ(frameFromIpv6.ipv4Port, emptyPort);
-  EXPECT_EQ(frameFromIpv6.ipv6Address, ipv6Address);
-  EXPECT_EQ(frameFromIpv6.ipv6Port, ipv6Port);
+  QuicIPAddress fromIpv6(ipv6Address, ipv6Port);
+  EXPECT_EQ(fromIpv6.ipv4Address, ipv4AddressEmpty);
+  EXPECT_EQ(fromIpv6.ipv4Port, emptyPort);
+  EXPECT_EQ(fromIpv6.ipv6Address, ipv6Address);
+  EXPECT_EQ(fromIpv6.ipv6Port, ipv6Port);
 
-  QuicFrameCarryingAddress frameFromIpv6WithSockAddr(ipv6SocketAddress);
-  EXPECT_EQ(frameFromIpv6WithSockAddr.ipv4Address, ipv4AddressEmpty);
-  EXPECT_EQ(frameFromIpv6WithSockAddr.ipv4Port, emptyPort);
-  EXPECT_EQ(frameFromIpv6WithSockAddr.ipv6Address, ipv6Address);
-  EXPECT_EQ(frameFromIpv6WithSockAddr.ipv6Port, ipv6Port);
+  QuicIPAddress fromIpv6WithSockAddr(ipv6SocketAddress);
+  EXPECT_EQ(fromIpv6WithSockAddr.ipv4Address, ipv4AddressEmpty);
+  EXPECT_EQ(fromIpv6WithSockAddr.ipv4Port, emptyPort);
+  EXPECT_EQ(fromIpv6WithSockAddr.ipv6Address, ipv6Address);
+  EXPECT_EQ(fromIpv6WithSockAddr.ipv6Port, ipv6Port);
 }
 
-TEST_F(QuicFrameCarryingAddressTest, TestInitializationWithBothFamilies) {
-  QuicFrameCarryingAddress frameFromIpAddresses(
-      ipv4Address, ipv4Port, ipv6Address, ipv6Port);
-  EXPECT_EQ(frameFromIpAddresses.ipv4Address, ipv4Address);
-  EXPECT_EQ(frameFromIpAddresses.ipv4Port, ipv4Port);
-  EXPECT_EQ(frameFromIpAddresses.ipv6Address, ipv6Address);
-  EXPECT_EQ(frameFromIpAddresses.ipv6Port, ipv6Port);
+TEST_F(QuicIPAddressTest, TestInitializationWithBothFamilies) {
+  QuicIPAddress fromIpAddresses(ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+  EXPECT_EQ(fromIpAddresses.ipv4Address, ipv4Address);
+  EXPECT_EQ(fromIpAddresses.ipv4Port, ipv4Port);
+  EXPECT_EQ(fromIpAddresses.ipv6Address, ipv6Address);
+  EXPECT_EQ(fromIpAddresses.ipv6Port, ipv6Port);
 
-  QuicFrameCarryingAddress frameFromSockAddresses(
-      ipv4SocketAddress, ipv6SocketAddress);
-  EXPECT_EQ(frameFromSockAddresses.ipv4Address, ipv4Address);
-  EXPECT_EQ(frameFromSockAddresses.ipv4Port, ipv4Port);
-  EXPECT_EQ(frameFromSockAddresses.ipv6Address, ipv6Address);
-  EXPECT_EQ(frameFromSockAddresses.ipv6Port, ipv6Port);
+  QuicIPAddress fromSockAddresses(ipv4SocketAddress, ipv6SocketAddress);
+  EXPECT_EQ(fromSockAddresses.ipv4Address, ipv4Address);
+  EXPECT_EQ(fromSockAddresses.ipv4Port, ipv4Port);
+  EXPECT_EQ(fromSockAddresses.ipv6Address, ipv6Address);
+  EXPECT_EQ(fromSockAddresses.ipv6Port, ipv6Port);
 
   // Attempt to initialize a V4 address starting from a V6 one and vice-versa.
   ASSERT_DEATH(
-      QuicFrameCarryingAddress frameFromWrongSockAddresses(
+      QuicIPAddress frameFromWrongSockAddresses(
           ipv6SocketAddress, ipv4SocketAddress),
       "\\w");
 }

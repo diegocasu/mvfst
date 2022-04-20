@@ -1635,16 +1635,16 @@ TEST_F(QuicWriteCodecTest, TestWriteServerMigrationFrame) {
   uint16_t ipv6Port = 5001;
 
   ServerMigrationFrame serverMigrationFrame(
-      ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+      QuicIPAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port));
   auto bytesWritten =
       writeServerMigrationFrame(serverMigrationFrame, pktBuilder);
 
   QuicInteger frameType(static_cast<uint8_t>(FrameType::SERVER_MIGRATION));
   auto serverMigrationFrameSize = frameType.getSize() +
-      serverMigrationFrame.ipv4Address.byteCount() +
-      sizeof(serverMigrationFrame.ipv4Port) +
-      serverMigrationFrame.ipv6Address.byteCount() +
-      sizeof(serverMigrationFrame.ipv6Port);
+      serverMigrationFrame.address.ipv4Address.byteCount() +
+      sizeof(serverMigrationFrame.address.ipv4Port) +
+      serverMigrationFrame.address.ipv6Address.byteCount() +
+      sizeof(serverMigrationFrame.address.ipv6Port);
   EXPECT_EQ(bytesWritten, serverMigrationFrameSize);
 
   auto builtOut = std::move(pktBuilder).buildTestPacket();
@@ -1653,10 +1653,10 @@ TEST_F(QuicWriteCodecTest, TestWriteServerMigrationFrame) {
                                      .asQuicSimpleFrame()
                                      ->asQuicServerMigrationFrame()
                                      ->asServerMigrationFrame();
-  EXPECT_EQ(result.ipv4Address, ipv4Address);
-  EXPECT_EQ(result.ipv4Port, ipv4Port);
-  EXPECT_EQ(result.ipv6Address, ipv6Address);
-  EXPECT_EQ(result.ipv6Port, ipv6Port);
+  EXPECT_EQ(result.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(result.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(result.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(result.address.ipv6Port, ipv6Port);
 
   auto wireBuf = std::move(builtOut.second);
   BufQueue queue;
@@ -1666,10 +1666,10 @@ TEST_F(QuicWriteCodecTest, TestWriteServerMigrationFrame) {
       *decodedFrame.asQuicSimpleFrame()
            ->asQuicServerMigrationFrame()
            ->asServerMigrationFrame();
-  EXPECT_EQ(wireServerMigrationFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(wireServerMigrationFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(wireServerMigrationFrame.ipv6Address, ipv6Address);
-  EXPECT_EQ(wireServerMigrationFrame.ipv6Port, ipv6Port);
+  EXPECT_EQ(wireServerMigrationFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(wireServerMigrationFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(wireServerMigrationFrame.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(wireServerMigrationFrame.address.ipv6Port, ipv6Port);
   EXPECT_EQ(queue.chainLength(), 0);
 }
 
@@ -1711,17 +1711,17 @@ TEST_F(QuicWriteCodecTest, TestWritePoolMigrationAddressFrame) {
   uint16_t ipv6Port = 5001;
 
   PoolMigrationAddressFrame poolMigrationAddressFrame(
-      ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+      QuicIPAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port));
   auto bytesWritten =
       writeServerMigrationFrame(poolMigrationAddressFrame, pktBuilder);
 
   QuicInteger frameType(
       static_cast<uint8_t>(FrameType::POOL_MIGRATION_ADDRESS));
   auto poolMigrationAddressFrameSize = frameType.getSize() +
-      poolMigrationAddressFrame.ipv4Address.byteCount() +
-      sizeof(poolMigrationAddressFrame.ipv4Port) +
-      poolMigrationAddressFrame.ipv6Address.byteCount() +
-      sizeof(poolMigrationAddressFrame.ipv6Port);
+      poolMigrationAddressFrame.address.ipv4Address.byteCount() +
+      sizeof(poolMigrationAddressFrame.address.ipv4Port) +
+      poolMigrationAddressFrame.address.ipv6Address.byteCount() +
+      sizeof(poolMigrationAddressFrame.address.ipv6Port);
   EXPECT_EQ(bytesWritten, poolMigrationAddressFrameSize);
 
   auto builtOut = std::move(pktBuilder).buildTestPacket();
@@ -1730,10 +1730,10 @@ TEST_F(QuicWriteCodecTest, TestWritePoolMigrationAddressFrame) {
                                           .asQuicSimpleFrame()
                                           ->asQuicServerMigrationFrame()
                                           ->asPoolMigrationAddressFrame();
-  EXPECT_EQ(result.ipv4Address, ipv4Address);
-  EXPECT_EQ(result.ipv4Port, ipv4Port);
-  EXPECT_EQ(result.ipv6Address, ipv6Address);
-  EXPECT_EQ(result.ipv6Port, ipv6Port);
+  EXPECT_EQ(result.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(result.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(result.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(result.address.ipv6Port, ipv6Port);
 
   auto wireBuf = std::move(builtOut.second);
   BufQueue queue;
@@ -1743,10 +1743,10 @@ TEST_F(QuicWriteCodecTest, TestWritePoolMigrationAddressFrame) {
       *decodedFrame.asQuicSimpleFrame()
            ->asQuicServerMigrationFrame()
            ->asPoolMigrationAddressFrame();
-  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv6Address, ipv6Address);
-  EXPECT_EQ(wirePoolMigrationAddressFrame.ipv6Port, ipv6Port);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(wirePoolMigrationAddressFrame.address.ipv6Port, ipv6Port);
   EXPECT_EQ(queue.chainLength(), 0);
 }
 

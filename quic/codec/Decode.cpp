@@ -745,7 +745,8 @@ ServerMigrationFrame decodeServerMigrationFrame(folly::io::Cursor& cursor) {
   }
   auto ipv6Port = cursor.readBE<uint16_t>();
 
-  return ServerMigrationFrame(ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+  return ServerMigrationFrame(
+      QuicIPAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port));
 }
 
 ServerMigratedFrame decodeServerMigratedFrame(folly::io::Cursor& /*cursor*/) {
@@ -791,7 +792,7 @@ PoolMigrationAddressFrame decodePoolMigrationAddressFrame(
   auto ipv6Port = cursor.readBE<uint16_t>();
 
   return PoolMigrationAddressFrame(
-      ipv4Address, ipv4Port, ipv6Address, ipv6Port);
+      QuicIPAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port));
 }
 
 QuicFrame parseFrame(

@@ -328,21 +328,21 @@ size_t writeServerMigrationFrame(
           *frame.asServerMigrationFrame();
       QuicInteger frameType(static_cast<uint8_t>(FrameType::SERVER_MIGRATION));
       auto serverMigrationFrameSize = frameType.getSize() +
-          serverMigrationFrame.ipv4Address.byteCount() +
-          sizeof(serverMigrationFrame.ipv4Port) +
-          serverMigrationFrame.ipv6Address.byteCount() +
-          sizeof(serverMigrationFrame.ipv6Port);
+          serverMigrationFrame.address.ipv4Address.byteCount() +
+          sizeof(serverMigrationFrame.address.ipv4Port) +
+          serverMigrationFrame.address.ipv6Address.byteCount() +
+          sizeof(serverMigrationFrame.address.ipv6Port);
 
       if (packetSpaceCheck(spaceLeft, serverMigrationFrameSize)) {
         builder.write(frameType);
         builder.push(
-            serverMigrationFrame.ipv4Address.bytes(),
-            serverMigrationFrame.ipv4Address.byteCount());
-        builder.writeBE(serverMigrationFrame.ipv4Port);
+            serverMigrationFrame.address.ipv4Address.bytes(),
+            serverMigrationFrame.address.ipv4Address.byteCount());
+        builder.writeBE(serverMigrationFrame.address.ipv4Port);
         builder.push(
-            serverMigrationFrame.ipv6Address.bytes(),
-            serverMigrationFrame.ipv6Address.byteCount());
-        builder.writeBE(serverMigrationFrame.ipv6Port);
+            serverMigrationFrame.address.ipv6Address.bytes(),
+            serverMigrationFrame.address.ipv6Address.byteCount());
+        builder.writeBE(serverMigrationFrame.address.ipv6Port);
         builder.appendFrame(QuicSimpleFrame(std::move(serverMigrationFrame)));
         return serverMigrationFrameSize;
       }
@@ -366,21 +366,21 @@ size_t writeServerMigrationFrame(
       QuicInteger frameType(
           static_cast<uint8_t>(FrameType::POOL_MIGRATION_ADDRESS));
       auto poolMigrationAddressFrameSize = frameType.getSize() +
-          poolMigrationAddressFrame.ipv4Address.byteCount() +
-          sizeof(poolMigrationAddressFrame.ipv4Port) +
-          poolMigrationAddressFrame.ipv6Address.byteCount() +
-          sizeof(poolMigrationAddressFrame.ipv6Port);
+          poolMigrationAddressFrame.address.ipv4Address.byteCount() +
+          sizeof(poolMigrationAddressFrame.address.ipv4Port) +
+          poolMigrationAddressFrame.address.ipv6Address.byteCount() +
+          sizeof(poolMigrationAddressFrame.address.ipv6Port);
 
       if (packetSpaceCheck(spaceLeft, poolMigrationAddressFrameSize)) {
         builder.write(frameType);
         builder.push(
-            poolMigrationAddressFrame.ipv4Address.bytes(),
-            poolMigrationAddressFrame.ipv4Address.byteCount());
-        builder.writeBE(poolMigrationAddressFrame.ipv4Port);
+            poolMigrationAddressFrame.address.ipv4Address.bytes(),
+            poolMigrationAddressFrame.address.ipv4Address.byteCount());
+        builder.writeBE(poolMigrationAddressFrame.address.ipv4Port);
         builder.push(
-            poolMigrationAddressFrame.ipv6Address.bytes(),
-            poolMigrationAddressFrame.ipv6Address.byteCount());
-        builder.writeBE(poolMigrationAddressFrame.ipv6Port);
+            poolMigrationAddressFrame.address.ipv6Address.bytes(),
+            poolMigrationAddressFrame.address.ipv6Address.byteCount());
+        builder.writeBE(poolMigrationAddressFrame.address.ipv6Port);
         builder.appendFrame(
             QuicSimpleFrame(std::move(poolMigrationAddressFrame)));
         return poolMigrationAddressFrameSize;

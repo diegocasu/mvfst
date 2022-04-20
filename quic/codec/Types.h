@@ -48,6 +48,77 @@ template <class T>
 using IntervalSetVec = SmallVec<T, kNumInitialAckBlocksPerFrame, uint16_t>;
 using AckBlocks = IntervalSet<PacketNum, 1, IntervalSetVec>;
 
+struct QuicIPAddress {
+  folly::IPAddressV4 ipv4Address{"0.0.0.0"};
+  uint16_t ipv4Port{0};
+  folly::IPAddressV6 ipv6Address{"::"};
+  uint16_t ipv6Port{0};
+
+  /**
+   * Creates a Quic IP address specifying a single address and port of a
+   * chosen family, either IPv4 or IPv6; the other address and port are set
+   * using an all-zero representation. The address family is automatically
+   * inferred from the argument.
+   * @param address  the socket address specifying an IP address and port.
+   */
+  explicit QuicIPAddress(const folly::SocketAddress& address) {
+    if (address.getIPAddress().isV4()) {
+      ipv4Address = address.getIPAddress().asV4();
+      ipv4Port = address.getPort();
+    } else if (address.getIPAddress().isV6()) {
+      ipv6Address = address.getIPAddress().asV6();
+      ipv6Port = address.getPort();
+    }
+  }
+
+  QuicIPAddress(
+      const folly::SocketAddress& addressV4,
+      const folly::SocketAddress& addressV6) {
+    CHECK(addressV4.getIPAddress().isV4() && addressV6.getIPAddress().isV6());
+    ipv4Address = addressV4.getIPAddress().asV4();
+    ipv4Port = addressV4.getPort();
+    ipv6Address = addressV6.getIPAddress().asV6();
+    ipv6Port = addressV6.getPort();
+  }
+
+  /**
+   * Creates a Quic IP address specifying a single address and port of a
+   * chosen family, either IPv4 or IPv6; the other address and port are set
+   * using an all-zero representation. The address family is automatically
+   * inferred from the arguments.
+   * @param address  the IP address of the chosen family.
+   * @param port     the port.
+   */
+  QuicIPAddress(const folly::IPAddress& address, const uint16_t& port) {
+    if (address.isV4()) {
+      ipv4Address = address.asV4();
+      ipv4Port = port;
+    } else if (address.isV6()) {
+      ipv6Address = address.asV6();
+      ipv6Port = port;
+    }
+  }
+
+  QuicIPAddress(
+      const folly::IPAddressV4& ipv4Address,
+      const uint16_t& ipv4Port,
+      const folly::IPAddressV6& ipv6Address,
+      const uint16_t& ipv6Port)
+      : ipv4Address(ipv4Address),
+        ipv4Port(ipv4Port),
+        ipv6Address(ipv6Address),
+        ipv6Port(ipv6Port) {}
+
+  bool operator==(const QuicIPAddress& rhs) const {
+    return ipv4Address == rhs.ipv4Address && ipv4Port == rhs.ipv4Port &&
+        ipv6Address == rhs.ipv6Address && ipv6Port == rhs.ipv6Port;
+  }
+
+  bool operator!=(const QuicIPAddress& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
 struct PaddingFrame {
   bool operator==(const PaddingFrame& /*rhs*/) const {
     return true;
@@ -712,104 +783,19 @@ struct NewToken : QuicAddrValidationToken {
   static constexpr TokenType tokenType = TokenType::NewToken;
 };
 
-struct QuicFrameCarryingAddress {
-  folly::IPAddressV4 ipv4Address{"0.0.0.0"};
-  uint16_t ipv4Port{0};
-  folly::IPAddressV6 ipv6Address{"::"};
-  uint16_t ipv6Port{0};
+struct ServerMigrationFrame {
+  QuicIPAddress address;
 
-  /**
-   * Creates a frame carrying a single address and port of a chosen family,
-   * either IPv4 or IPv6; the other address and port carried in the frame are
-   * set to zero. The address family is automatically inferred from the
-   * argument.
-   * @param address  the address that must be carried in the frame.
-   */
-  explicit QuicFrameCarryingAddress(const folly::SocketAddress& address) {
-    if (address.getIPAddress().isV4()) {
-      ipv4Address = address.getIPAddress().asV4();
-      ipv4Port = address.getPort();
-    } else if (address.getIPAddress().isV6()) {
-      ipv6Address = address.getIPAddress().asV6();
-      ipv6Port = address.getPort();
-    }
+  explicit ServerMigrationFrame(QuicIPAddress address)
+      : address(std::move(address)) {}
+
+  bool operator==(const ServerMigrationFrame& rhs) const {
+    return address == rhs.address;
   }
 
-  QuicFrameCarryingAddress(
-      const folly::SocketAddress& addressV4,
-      const folly::SocketAddress& addressV6) {
-    CHECK(addressV4.getIPAddress().isV4() && addressV6.getIPAddress().isV6());
-    ipv4Address = addressV4.getIPAddress().asV4();
-    ipv4Port = addressV4.getPort();
-    ipv6Address = addressV6.getIPAddress().asV6();
-    ipv6Port = addressV6.getPort();
-  }
-
-  /**
-   * Creates a frame carrying a single address and port of a chosen family,
-   * either IPv4 or IPv6; the other address and port carried in the frame are
-   * set to zero. The address family is automatically inferred from the
-   * arguments.
-   * @param address  the IP address that must be carried in the frame.
-   * @param port     the port that must be carried in the frame.
-   */
-  explicit QuicFrameCarryingAddress(
-      const folly::IPAddress& address,
-      const uint16_t& port) {
-    if (address.isV4()) {
-      ipv4Address = address.asV4();
-      ipv4Port = port;
-    } else if (address.isV6()) {
-      ipv6Address = address.asV6();
-      ipv6Port = port;
-    }
-  }
-
-  QuicFrameCarryingAddress(
-      const folly::IPAddressV4& ipv4Address,
-      const uint16_t& ipv4Port,
-      const folly::IPAddressV6& ipv6Address,
-      const uint16_t& ipv6Port)
-      : ipv4Address(ipv4Address),
-        ipv4Port(ipv4Port),
-        ipv6Address(ipv6Address),
-        ipv6Port(ipv6Port) {}
-
-  virtual ~QuicFrameCarryingAddress() = default;
-
-  bool operator==(const QuicFrameCarryingAddress& rhs) const {
-    return ipv4Address == rhs.ipv4Address && ipv4Port == rhs.ipv4Port &&
-        ipv6Address == rhs.ipv6Address && ipv6Port == rhs.ipv6Port;
-  }
-
-  bool operator!=(const QuicFrameCarryingAddress& rhs) const {
+  bool operator!=(const ServerMigrationFrame& rhs) const {
     return !(rhs == *this);
   }
-};
-
-struct ServerMigrationFrame : QuicFrameCarryingAddress {
-  explicit ServerMigrationFrame(const folly::SocketAddress& address)
-      : QuicFrameCarryingAddress(address) {}
-
-  ServerMigrationFrame(
-      const folly::SocketAddress& addressV4,
-      const folly::SocketAddress& addressV6)
-      : QuicFrameCarryingAddress(addressV4, addressV6) {}
-
-  explicit ServerMigrationFrame(
-      const folly::IPAddress& address,
-      const uint16_t& port)
-      : QuicFrameCarryingAddress(address, port) {}
-
-  explicit ServerMigrationFrame(
-      const folly::IPAddressV4& ipv4Address,
-      const uint16_t& ipv4Port,
-      const folly::IPAddressV6& ipv6Address,
-      const uint16_t& ipv6Port)
-      : QuicFrameCarryingAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port) {
-  }
-
-  ~ServerMigrationFrame() override = default;
 };
 
 struct ServerMigratedFrame {
@@ -820,29 +806,19 @@ struct ServerMigratedFrame {
   }
 };
 
-struct PoolMigrationAddressFrame : QuicFrameCarryingAddress {
-  explicit PoolMigrationAddressFrame(const folly::SocketAddress& address)
-      : QuicFrameCarryingAddress(address) {}
+struct PoolMigrationAddressFrame {
+  QuicIPAddress address;
 
-  PoolMigrationAddressFrame(
-      const folly::SocketAddress& addressV4,
-      const folly::SocketAddress& addressV6)
-      : QuicFrameCarryingAddress(addressV4, addressV6) {}
+  explicit PoolMigrationAddressFrame(QuicIPAddress address)
+      : address(std::move(address)) {}
 
-  explicit PoolMigrationAddressFrame(
-      const folly::IPAddress& address,
-      const uint16_t& port)
-      : QuicFrameCarryingAddress(address, port) {}
-
-  explicit PoolMigrationAddressFrame(
-      const folly::IPAddressV4& ipv4Address,
-      const uint16_t& ipv4Port,
-      const folly::IPAddressV6& ipv6Address,
-      const uint16_t& ipv6Port)
-      : QuicFrameCarryingAddress(ipv4Address, ipv4Port, ipv6Address, ipv6Port) {
+  bool operator==(const PoolMigrationAddressFrame& rhs) const {
+    return address == rhs.address;
   }
 
-  ~PoolMigrationAddressFrame() override = default;
+  bool operator!=(const PoolMigrationAddressFrame& rhs) const {
+    return !(rhs == *this);
+  }
 };
 
 #define QUIC_SERVER_MIGRATION_FRAME(F, ...) \

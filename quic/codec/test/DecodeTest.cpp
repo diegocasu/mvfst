@@ -803,10 +803,10 @@ TEST_F(DecodeTest, TestDecodeFullySpecifiedServerMigrationFrame) {
   folly::io::Cursor cursor(serverMigrationFrame.get());
   auto decodedFrame = decodeServerMigrationFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, ipv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, ipv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, ipv6Port);
 }
 
 TEST_F(DecodeTest, TestDecodeOneAddressFamilyServerMigrationFrame) {
@@ -819,10 +819,10 @@ TEST_F(DecodeTest, TestDecodeOneAddressFamilyServerMigrationFrame) {
   folly::io::Cursor cursor(serverMigrationFrame.get());
   auto decodedFrame = decodeServerMigrationFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, emptyIpv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, emptyIpv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, emptyIpv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, emptyIpv6Port);
 }
 
 TEST_F(DecodeTest, TestDecodeAllZeroServerMigrationFrame) {
@@ -835,10 +835,10 @@ TEST_F(DecodeTest, TestDecodeAllZeroServerMigrationFrame) {
   folly::io::Cursor cursor(serverMigrationFrame.get());
   auto decodedFrame = decodeServerMigrationFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, emptyIpv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, emptyIpv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, emptyIpv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, emptyIpv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, emptyIpv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, emptyIpv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, emptyIpv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, emptyIpv6Port);
 }
 
 TEST_F(DecodeTest, TestDecodeServerMigratedFrame) {
@@ -878,10 +878,10 @@ TEST_F(DecodeTest, TestDecodeFullySpecifiedPoolMigrationAddressFrame) {
   folly::io::Cursor cursor(poolMigrationAddressFrame.get());
   auto decodedFrame = decodePoolMigrationAddressFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, ipv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, ipv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, ipv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, ipv6Port);
 }
 
 TEST_F(DecodeTest, TestDecodeOneAddressFamilyPoolMigrationAddressFrame) {
@@ -895,10 +895,10 @@ TEST_F(DecodeTest, TestDecodeOneAddressFamilyPoolMigrationAddressFrame) {
   folly::io::Cursor cursor(poolMigrationAddressFrame.get());
   auto decodedFrame = decodePoolMigrationAddressFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, ipv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, ipv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, emptyIpv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, emptyIpv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, ipv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, ipv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, emptyIpv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, emptyIpv6Port);
 }
 
 TEST_F(DecodeTest, TestDecodeAllZeroPoolMigrationAddressFrame) {
@@ -911,10 +911,10 @@ TEST_F(DecodeTest, TestDecodeAllZeroPoolMigrationAddressFrame) {
   folly::io::Cursor cursor(poolMigrationAddressFrame.get());
   auto decodedFrame = decodePoolMigrationAddressFrame(cursor);
 
-  EXPECT_EQ(decodedFrame.ipv4Address, emptyIpv4Address);
-  EXPECT_EQ(decodedFrame.ipv4Port, emptyIpv4Port);
-  EXPECT_EQ(decodedFrame.ipv6Address, emptyIpv6Address);
-  EXPECT_EQ(decodedFrame.ipv6Port, emptyIpv6Port);
+  EXPECT_EQ(decodedFrame.address.ipv4Address, emptyIpv4Address);
+  EXPECT_EQ(decodedFrame.address.ipv4Port, emptyIpv4Port);
+  EXPECT_EQ(decodedFrame.address.ipv6Address, emptyIpv6Address);
+  EXPECT_EQ(decodedFrame.address.ipv6Port, emptyIpv6Port);
 }
 
 } // namespace test
