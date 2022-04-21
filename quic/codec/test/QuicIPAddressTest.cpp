@@ -67,5 +67,16 @@ TEST_F(QuicIPAddressTest, TestInitializationWithBothFamilies) {
       "\\w");
 }
 
+TEST_F(QuicIPAddressTest, TestAllZeroRepresentation) {
+  QuicIPAddress notAllZero(ipv4SocketAddress, ipv6SocketAddress);
+  EXPECT_FALSE(notAllZero.isAllZero());
+
+  notAllZero = QuicIPAddress(ipv4SocketAddress);
+  EXPECT_FALSE(notAllZero.isAllZero());
+
+  QuicIPAddress allZero(folly::IPAddressV4("0.0.0.0"), 0);
+  EXPECT_TRUE(allZero.isAllZero());
+}
+
 } // namespace test
 } // namespace quic
