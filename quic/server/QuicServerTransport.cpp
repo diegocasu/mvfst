@@ -172,8 +172,8 @@ bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
     return true;
   }
   auto result =
-      serverConn_->serverMigrationState.pendingPoolMigrationAddresses.value()
-          .emplace(std::move(address), false);
+      serverConn_->serverMigrationState.pendingPoolMigrationAddresses->emplace(
+          std::move(address), false);
   if (!result.second) {
     LOG(ERROR) << "Ignoring attempt to add a duplicate address";
   }
@@ -613,8 +613,8 @@ void QuicServerTransport::maybeNotifyHandshakeFinished() {
         negotiatedProtocols;
 
     if (serverConn_->serverMigrationState.negotiator) {
-      negotiatedProtocols = serverConn_->serverMigrationState.negotiator.value()
-                                .getNegotiatedProtocols();
+      negotiatedProtocols = serverConn_->serverMigrationState.negotiator
+                                ->getNegotiatedProtocols();
     }
 
     serverConn_->serverMigrationState.clientStateUpdateCallback

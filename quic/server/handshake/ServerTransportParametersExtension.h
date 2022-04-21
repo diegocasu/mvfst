@@ -107,9 +107,9 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
 
     if (clientTransportParameters_ && serverMigrationNegotiator_) {
       auto it = findParameter(
-          clientTransportParameters_.value().parameters,
+          clientTransportParameters_->parameters,
           TransportParameterId::server_migration_suite);
-      if (it != clientTransportParameters_.value().parameters.end()) {
+      if (it != clientTransportParameters_->parameters.end()) {
         serverMigrationNegotiator_.value()->onMigrationSuiteReceived(*it);
         customTransportParameters_.push_back(
             serverMigrationNegotiator_.value()
