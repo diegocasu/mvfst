@@ -117,6 +117,18 @@ struct QuicIPAddress {
   bool operator!=(const QuicIPAddress& rhs) const {
     return !(rhs == *this);
   }
+
+  struct Hash {
+    size_t operator()(const QuicIPAddress& quicIpAddress) const {
+      return folly::hash::hash_combine(
+          quicIpAddress.ipv4Address.hash(),
+          folly::hash::fnv32_buf(
+              &quicIpAddress.ipv4Port, sizeof(quicIpAddress.ipv4Port)),
+          quicIpAddress.ipv6Address.hash(),
+          folly::hash::fnv32_buf(
+              &quicIpAddress.ipv6Port, sizeof(quicIpAddress.ipv6Port)));
+    }
+  };
 };
 
 struct PaddingFrame {
