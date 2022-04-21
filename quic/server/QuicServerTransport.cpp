@@ -15,6 +15,7 @@
 #include <quic/server/handshake/AppToken.h>
 #include <quic/server/handshake/DefaultAppTokenValidator.h>
 #include <quic/server/handshake/StatelessResetGenerator.h>
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 
 #include <algorithm>
 
@@ -216,6 +217,7 @@ void QuicServerTransport::onReadData(
   maybeWriteNewSessionTicket();
   maybeNotifyConnectionIdBound();
   maybeNotifyHandshakeFinished();
+  maybeSendPoolMigrationAddresses();
   maybeIssueConnectionIds();
   maybeStartD6DProbing();
   maybeNotifyTransportReady();
@@ -477,6 +479,7 @@ void QuicServerTransport::onCryptoEventAvailable() noexcept {
     maybeWriteNewSessionTicket();
     maybeNotifyConnectionIdBound();
     maybeNotifyHandshakeFinished();
+    maybeSendPoolMigrationAddresses();
     maybeIssueConnectionIds();
     writeSocketData();
     maybeNotifyTransportReady();
@@ -628,6 +631,32 @@ void QuicServerTransport::maybeNotifyHandshakeFinished() {
       serverConn_->serverHandshakeLayer->isHandshakeDone()) {
     handshakeFinishedCb_->onHandshakeFinished();
     handshakeFinishedCb_ = nullptr;
+  }
+}
+
+void QuicServerTransport::maybeSendPoolMigrationAddresses() {
+  if (serverConn_->serverHandshakeLayer->isHandshakeDone() &&
+      serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
+    if (!serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
+             ->count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
+      LOG(INFO)
+          << "Ignoring the address pool due to Pool of Addresses not negotiated";
+      serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
+      return;
+    }
+
+    for (const auto& address : serverConn_->serverMigrationState
+                                   .pendingPoolMigrationAddresses.value()) {
+      PoolMigrationAddressFrame frame(address.first);
+      sendServerMigrationFrame(*serverConn_, std::move(frame));
+    }
+
+    PoolOfAddressesState protocolState;
+    protocolState.migrationAddresses =
+        std::move(serverConn_->serverMigrationState
+                      .pendingPoolMigrationAddresses.value());
+    serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
+    serverConn_->serverMigrationState.protocolState = std::move(protocolState);
   }
 }
 

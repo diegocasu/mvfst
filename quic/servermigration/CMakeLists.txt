@@ -32,6 +32,36 @@ target_link_libraries(
   mvfst_handshake
 )
 
+add_library(
+  mvfst_server_migration_frame_functions
+  ServerMigrationFrameFunctions.cpp
+)
+
+target_include_directories(
+  mvfst_server_migration_frame_functions PUBLIC
+  $<BUILD_INTERFACE:${QUIC_FBCODE_ROOT}>
+  $<INSTALL_INTERFACE:include/>
+)
+
+target_compile_options(
+  mvfst_server_migration_frame_functions
+  PRIVATE
+  ${_QUIC_COMMON_COMPILE_OPTIONS}
+)
+
+add_dependencies(
+  mvfst_server_migration_frame_functions
+  mvfst_server_state
+  mvfst_codec_types
+)
+
+target_link_libraries(
+  mvfst_server_migration_frame_functions PUBLIC
+  Folly::folly
+  mvfst_server_state
+  mvfst_codec_types
+)
+
 file(
   GLOB_RECURSE QUIC_API_HEADERS_TOINSTALL
   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -45,6 +75,12 @@ endforeach()
 
 install(
   TARGETS mvfst_server_migration_negotiator
+  EXPORT mvfst-exports
+  DESTINATION lib
+)
+
+install(
+  TARGETS mvfst_server_migration_frame_functions
   EXPORT mvfst-exports
   DESTINATION lib
 )

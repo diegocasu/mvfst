@@ -219,6 +219,7 @@ class QuicServerTransport
   bool hasReadCipher() const;
   void maybeStartD6DProbing();
   void registerAllTransportKnobParamHandlers();
+  void maybeSendPoolMigrationAddresses();
 
  private:
   RoutingCallback* routingCb_{nullptr};

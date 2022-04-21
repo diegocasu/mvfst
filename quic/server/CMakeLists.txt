@@ -86,6 +86,7 @@ add_dependencies(
   mvfst_state_datagram_handler
   mvfst_transport
   mvfst_transport_knobs
+  mvfst_server_migration_frame_functions
 )
 
 if(DEFINED CCP_ENABLED)
@@ -135,6 +136,7 @@ target_link_libraries(
   mvfst_state_datagram_handler
   mvfst_transport
   mvfst_transport_knobs
+  mvfst_server_migration_frame_functions
   ${LIBCCP_LIBRARY}
   ${LIBSTARTCCP_LIBRARY}
 )
