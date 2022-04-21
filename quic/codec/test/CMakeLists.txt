@@ -113,3 +113,11 @@ quic_add_test(TARGET ServerConnectionIdParamsTest
   Folly::folly
   mvfst_codec_types
 )
+
+quic_add_test(TARGET QuicIPAddressTest
+  SOURCES
+  QuicIPAddressTest.cpp
+  DEPENDS
+  Folly::folly
+  mvfst_codec_types
+)

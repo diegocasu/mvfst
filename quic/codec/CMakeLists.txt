@@ -9,6 +9,7 @@ add_library(
   PacketNumber.cpp
   QuicConnectionId.cpp
   QuicInteger.cpp
+  QuicIPAddress.cpp
   Types.cpp
 )
 
