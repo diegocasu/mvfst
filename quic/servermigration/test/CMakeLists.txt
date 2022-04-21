@@ -7,7 +7,7 @@ quic_add_test(TARGET QuicServerMigrationNegotiatorClientTest
   QuicServerMigrationNegotiatorClientTest.cpp
   DEPENDS
   Folly::folly
-  mvfst_server_migration
+  mvfst_server_migration_negotiator
   mvfst_constants
   mvfst_exception
   mvfst_handshake
@@ -18,7 +18,7 @@ quic_add_test(TARGET QuicServerMigrationNegotiatorServerTest
   QuicServerMigrationNegotiatorServerTest.cpp
   DEPENDS
   Folly::folly
-  mvfst_server_migration
+  mvfst_server_migration_negotiator
   mvfst_constants
   mvfst_exception
   mvfst_handshake
@@ -31,7 +31,7 @@ quic_add_test(TARGET QuicServerMigrationIntegrationTest
   Folly::folly
   mvfst_server
   mvfst_client
-  mvfst_server_migration
+  mvfst_server_migration_negotiator
   mvfst_constants
   mvfst_exception
   mvfst_test_utils
