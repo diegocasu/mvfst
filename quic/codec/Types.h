@@ -118,6 +118,11 @@ struct QuicIPAddress {
     return !(rhs == *this);
   }
 
+  bool isAllZero() {
+    return ipv4Address == folly::IPAddressV4("0.0.0.0") && ipv4Port == 0 &&
+        ipv6Address == folly::IPAddressV6("::") && ipv6Port == 0;
+  }
+
   struct Hash {
     size_t operator()(const QuicIPAddress& quicIpAddress) const {
       return folly::hash::hash_combine(
