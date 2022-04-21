@@ -157,7 +157,7 @@ class QuicClientTransport
    *                            enabled, false otherwise.
    */
   bool allowServerMigration(
-      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
+      const std::unordered_set<ServerMigrationProtocol>& supportedProtocols);
 
   /**
    * Set callback for various transport stats (such as packet received, dropped

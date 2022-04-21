@@ -115,7 +115,7 @@ class QuicServerTransport
    *                            enabled, false otherwise.
    */
   bool allowServerMigration(
-      std::unordered_set<ServerMigrationProtocol> supportedProtocols);
+      const std::unordered_set<ServerMigrationProtocol>& supportedProtocols);
 
   /**
    * Sets the callback to invoke when the server migration management

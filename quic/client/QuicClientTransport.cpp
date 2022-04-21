@@ -1788,13 +1788,13 @@ void QuicClientTransport::setSupportedVersions(
 }
 
 bool QuicClientTransport::allowServerMigration(
-    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+    const std::unordered_set<ServerMigrationProtocol>& supportedProtocols) {
   if (supportedProtocols.empty()) {
     LOG(ERROR) << "No protocols specified for server migration";
     return false;
   }
   clientConn_->serverMigrationState.negotiator =
-      QuicServerMigrationNegotiatorClient(std::move(supportedProtocols));
+      QuicServerMigrationNegotiatorClient(supportedProtocols);
   return true;
 }
 

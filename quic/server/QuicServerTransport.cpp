@@ -139,13 +139,13 @@ void QuicServerTransport::setServerConnectionIdRejector(
 }
 
 bool QuicServerTransport::allowServerMigration(
-    std::unordered_set<ServerMigrationProtocol> supportedProtocols) {
+    const std::unordered_set<ServerMigrationProtocol>& supportedProtocols) {
   if (supportedProtocols.empty()) {
     LOG(ERROR) << "No protocols specified for server migration";
     return false;
   }
   serverConn_->serverMigrationState.negotiator =
-      QuicServerMigrationNegotiatorServer(std::move(supportedProtocols));
+      QuicServerMigrationNegotiatorServer(supportedProtocols);
   return true;
 }
 
