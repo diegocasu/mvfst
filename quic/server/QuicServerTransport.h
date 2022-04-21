@@ -10,6 +10,7 @@
 #include <quic/api/QuicTransportBase.h>
 #include <quic/api/QuicTransportFunctions.h>
 #include <quic/codec/ConnectionIdAlgo.h>
+#include <quic/codec/QuicIPAddress.h>
 #include <quic/common/TransportKnobs.h>
 #include <quic/congestion_control/CongestionControllerFactory.h>
 #include <quic/server/handshake/ServerTransportParametersExtension.h>
@@ -116,6 +117,23 @@ class QuicServerTransport
    */
   bool allowServerMigration(
       const std::unordered_set<ServerMigrationProtocol>& supportedProtocols);
+
+  /**
+   * Adds an address to the set of possible migration addresses used in the
+   * Pool of Addresses (PoA) server migration protocol. It has no effect if
+   * called before allowServerMigration(), or when PoA has not been marked
+   * as a supported protocol, or after the handshake has been completed.
+   * If the migration protocol negotiation ends with PoA as one of the usable
+   * protocols and this method has been called, the transport always uses
+   * PoA as migration protocol, ignoring the other possible choices.
+   * If the migration protocol negotiation ends with PoA not in the list of
+   * usable protocols and this method has been called, the transport ignores
+   * the PoA pool.
+   * @param address  the Quic IP address to add to the PoA pool.
+   * @return         true if the address has been added to the PoA pool,
+   *                 false otherwise.
+   */
+  bool addPoolMigrationAddress(QuicIPAddress address);
 
   /**
    * Sets the callback to invoke when the server migration management

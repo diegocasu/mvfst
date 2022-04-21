@@ -85,6 +85,29 @@ struct ConnectionMigrationState {
   folly::Optional<CongestionAndRttState> lastCongestionAndRtt;
 };
 
+struct PoolOfAddressesState {
+  using Pool = std::unordered_map<QuicIPAddress, bool, QuicIPAddressHash>;
+
+  // Set of possible migration addresses. Each address is characterized by a
+  // boolean telling if the associated frame has been acknowledged or not.
+  Pool migrationAddresses;
+
+  bool operator==(const PoolOfAddressesState& rhs) const {
+    return migrationAddresses == rhs.migrationAddresses;
+  }
+
+  bool operator!=(const PoolOfAddressesState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
+#define QUIC_SERVER_MIGRATION_PROTOCOL_STATE(F, ...) \
+  F(PoolOfAddressesState, __VA_ARGS__)
+
+DECLARE_VARIANT_TYPE(
+    QuicServerMigrationProtocolState,
+    QUIC_SERVER_MIGRATION_PROTOCOL_STATE)
+
 struct QuicServerConnectionState : public QuicConnectionStateBase {
   ~QuicServerConnectionState() override = default;
 
@@ -103,6 +126,8 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
     folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
     ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
     bool notifiedHandshakeDone{false};
+    folly::Optional<PoolOfAddressesState::Pool> pendingPoolMigrationAddresses;
+    folly::Optional<QuicServerMigrationProtocolState> protocolState;
   };
 
   ServerMigrationState serverMigrationState;

@@ -1735,6 +1735,24 @@ TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallback) {
   EXPECT_TRUE(server->setClientStateUpdateCallback(&callback));
 }
 
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
+  QuicIPAddress address(folly::IPAddressV4("127.0.0.1"), 5000);
+  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  server->allowServerMigration(supportedProtocols);
+  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  EXPECT_TRUE(server->addPoolMigrationAddress(address));
+  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+
+  QuicIPAddress allZeroAddress(folly::IPAddressV4("0.0.0.0"), 0);
+  EXPECT_FALSE(server->addPoolMigrationAddress(allZeroAddress));
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {

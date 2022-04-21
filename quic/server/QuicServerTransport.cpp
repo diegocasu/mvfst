@@ -149,6 +149,36 @@ bool QuicServerTransport::allowServerMigration(
   return true;
 }
 
+bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
+  if (!serverConn_->serverMigrationState.negotiator) {
+    LOG(ERROR) << "Server migration is not enabled";
+    return false;
+  }
+  if (!serverConn_->serverMigrationState.negotiator->getSupportedProtocols()
+           .count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
+    LOG(ERROR)
+        << "Pool of Addresses is not among the supported migration protocols";
+    return false;
+  }
+  if (address.isAllZero()) {
+    LOG(ERROR)
+        << "All-zero addresses are not allowed in the Pool of Addresses protocol";
+    return false;
+  }
+  if (!serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
+    serverConn_->serverMigrationState.pendingPoolMigrationAddresses =
+        PoolOfAddressesState::Pool({{address, false}});
+    return true;
+  }
+  auto result =
+      serverConn_->serverMigrationState.pendingPoolMigrationAddresses.value()
+          .emplace(std::move(address), false);
+  if (!result.second) {
+    LOG(ERROR) << "Ignoring attempt to add a duplicate address";
+  }
+  return result.second;
+}
+
 bool QuicServerTransport::setClientStateUpdateCallback(
     ClientStateUpdateCallback* callback) {
   if (callback == nullptr) {
