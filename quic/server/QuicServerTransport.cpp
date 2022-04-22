@@ -168,7 +168,7 @@ bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
   }
   if (!serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
     serverConn_->serverMigrationState.pendingPoolMigrationAddresses =
-        PoolOfAddressesState::Pool({{address, false}});
+        PoolOfAddressesServerState::Pool({{address, false}});
     return true;
   }
   auto result =
@@ -661,7 +661,7 @@ void QuicServerTransport::maybeSendPoolMigrationAddresses() {
       sendServerMigrationFrame(*serverConn_, std::move(frame));
     }
 
-    PoolOfAddressesState protocolState;
+    PoolOfAddressesServerState protocolState;
     protocolState.migrationAddresses =
         std::move(serverConn_->serverMigrationState
                       .pendingPoolMigrationAddresses.value());
