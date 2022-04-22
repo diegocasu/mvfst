@@ -166,6 +166,11 @@ bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
         << "All-zero addresses are not allowed in the Pool of Addresses protocol";
     return false;
   }
+  if (serverConn_->serverHandshakeLayer->isHandshakeDone()) {
+    LOG(ERROR)
+        << "Cannot send pool migration addresses after the handshake is completed";
+    return false;
+  }
   if (!serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
     serverConn_->serverMigrationState.pendingPoolMigrationAddresses =
         PoolOfAddressesServerState::Pool({{address, false}});
@@ -651,6 +656,16 @@ void QuicServerTransport::maybeSendPoolMigrationAddresses() {
              ->count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
       LOG(INFO)
           << "Ignoring the address pool due to Pool of Addresses not negotiated";
+      serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
+      return;
+    }
+    if (serverConn_->serverMigrationState.protocolState) {
+      // This can happen only if addPoolMigrationAddress() is allowed to be
+      // invoked again after the previously pending POOL_MIGRATION_ADDRESS
+      // frames have been sent, or it is invoked after a different
+      // migration protocol has been chosen.
+      LOG(INFO)
+          << "Ignoring the address pool due to protocol state already created";
       serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
       return;
     }

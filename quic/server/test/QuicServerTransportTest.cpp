@@ -1752,6 +1752,18 @@ TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
 
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   server->allowServerMigration(supportedProtocols);
+
+  // Due to the initialization performed in the fixture, the server variable
+  // is such that a call to isHandshakeDone() returns true. Then, it is
+  // possible to test that addPoolMigrationAddress() does not accept
+  // new addresses after the handshake completion.
+  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+
+  // To test that addPoolMigrationAddress() accepts addresses before the
+  // handshake completion, the state of the handshake layer is reset.
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
   EXPECT_TRUE(server->addPoolMigrationAddress(address));
   EXPECT_FALSE(server->addPoolMigrationAddress(address));
 
