@@ -31,4 +31,21 @@ class MockClientStateUpdateCallback : public ClientStateUpdateCallback {
       (noexcept, override));
 };
 
+class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
+ public:
+  ~MockServerMigrationEventCallback() = default;
+
+  MOCK_METHOD(
+      void,
+      onPoolMigrationAddressReceived,
+      (PoolMigrationAddressFrame frame),
+      (noexcept, override));
+
+  MOCK_METHOD(
+      void,
+      onPoolMigrationAddressAckReceived,
+      (PoolMigrationAddressFrame frame),
+      (noexcept, override));
+};
+
 } // namespace quic

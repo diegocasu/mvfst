@@ -144,6 +144,14 @@ class QuicServerTransport
   bool setClientStateUpdateCallback(ClientStateUpdateCallback* callback);
 
   /**
+   * Sets the callback to invoke when an event related to server migration
+   * occurs and should be notified to the server migration management interface.
+   * @param callback  the callback.
+   * @return          true if the callback has been set, false otherwise.
+   */
+  bool setServerMigrationEventCallback(ServerMigrationEventCallback* callback);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc).
    */

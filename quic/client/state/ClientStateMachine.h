@@ -14,6 +14,7 @@
 #include <quic/flowcontrol/QuicFlowController.h>
 #include <quic/handshake/TransportParameters.h>
 #include <quic/servermigration/QuicServerMigrationNegotiatorClient.h>
+#include <quic/servermigration/management/Callbacks.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/StateData.h>
 
@@ -60,6 +61,7 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
 
   struct ServerMigrationState {
     folly::Optional<QuicServerMigrationNegotiatorClient> negotiator;
+    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
   };
 
   ServerMigrationState serverMigrationState;

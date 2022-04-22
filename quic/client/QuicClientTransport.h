@@ -160,6 +160,14 @@ class QuicClientTransport
       const std::unordered_set<ServerMigrationProtocol>& supportedProtocols);
 
   /**
+   * Sets the callback to invoke when an event related
+   * to server migration occurs.
+   * @param callback  the callback.
+   * @return          true if the callback has been set, false otherwise.
+   */
+  bool setServerMigrationEventCallback(ServerMigrationEventCallback* callback);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc). Since the callback is invoked very frequently, it is
    * important that the implementation is efficient.

@@ -1735,6 +1735,12 @@ TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallback) {
   EXPECT_TRUE(server->setClientStateUpdateCallback(&callback));
 }
 
+TEST_F(QuicServerTransportTest, TestSetServerMigrationEventCallback) {
+  EXPECT_FALSE(server->setServerMigrationEventCallback(nullptr));
+  MockServerMigrationEventCallback callback;
+  EXPECT_TRUE(server->setServerMigrationEventCallback(&callback));
+}
+
 TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
   QuicIPAddress address(folly::IPAddressV4("127.0.0.1"), 5000);
   EXPECT_FALSE(server->addPoolMigrationAddress(address));

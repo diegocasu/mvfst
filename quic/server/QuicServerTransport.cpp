@@ -190,6 +190,16 @@ bool QuicServerTransport::setClientStateUpdateCallback(
   return true;
 }
 
+bool QuicServerTransport::setServerMigrationEventCallback(
+    ServerMigrationEventCallback* callback) {
+  if (callback == nullptr) {
+    LOG(ERROR) << "Null server migration event callback";
+    return false;
+  }
+  serverConn_->serverMigrationState.serverMigrationEventCallback = callback;
+  return true;
+}
+
 void QuicServerTransport::onReadData(
     const folly::SocketAddress& peer,
     NetworkDataSingle&& networkData) {

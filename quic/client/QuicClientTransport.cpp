@@ -1798,6 +1798,16 @@ bool QuicClientTransport::allowServerMigration(
   return true;
 }
 
+bool QuicClientTransport::setServerMigrationEventCallback(
+    ServerMigrationEventCallback* callback) {
+  if (callback == nullptr) {
+    LOG(ERROR) << "Null server migration event callback";
+    return false;
+  }
+  clientConn_->serverMigrationState.serverMigrationEventCallback = callback;
+  return true;
+}
+
 void QuicClientTransport::onNetworkSwitch(
     std::unique_ptr<folly::AsyncUDPSocket> newSock) {
   if (!conn_->oneRttWriteCipher) {

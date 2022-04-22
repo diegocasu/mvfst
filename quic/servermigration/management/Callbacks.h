@@ -3,12 +3,14 @@
 #include <folly/SocketAddress.h>
 #include <quic/QuicConstants.h>
 #include <quic/codec/QuicConnectionId.h>
+#include <quic/codec/Types.h>
 
 namespace quic {
 
 /**
  * Callbacks invoked when the state of a client changes in a way that should
  * be notified to the server migration management interface.
+ * They should be implemented only on the server side.
  * The callbacks can be invoked by multiple threads (workers) concurrently,
  * thus their implementations must be thread-safe. Moreover, since they are
  * executed synchronously when called, their operations must not be blocking
@@ -53,6 +55,36 @@ class ClientStateUpdateCallback {
    *                            onHandshakeFinished().
    */
   virtual void onConnectionClose(ConnectionId serverConnectionId) noexcept = 0;
+};
+
+/**
+ * Callbacks invoked when an event related to server migration occurs.
+ * They can be implemented both on the client side and the server side.
+ * The callbacks can be invoked by multiple threads (workers) concurrently,
+ * if called on the server-side, thus their implementations must be thread-safe.
+ * Moreover, since they are executed synchronously when called, their operations
+ * must not be blocking or heavyweight to avoid freezing the worker: if such
+ * operations are required, they must be delegated to a separate dedicated
+ * thread.
+ */
+class ServerMigrationEventCallback {
+ public:
+  virtual ~ServerMigrationEventCallback() = default;
+
+  /**
+   * Called when a POOL_MIGRATION_ADDRESS frame is received.
+   * @param frame  the received POOL_MIGRATION_ADDRESS frame
+   */
+  virtual void onPoolMigrationAddressReceived(
+      PoolMigrationAddressFrame /*frame*/) noexcept {};
+
+  /**
+   * Called when an acknowledgement for a previously sent
+   * POOL_MIGRATION_ADDRESS frame is received.
+   * @param frame  the acknowledged POOL_MIGRATION_ADDRESS frame.
+   */
+  virtual void onPoolMigrationAddressAckReceived(
+      PoolMigrationAddressFrame /*frame*/) noexcept {};
 };
 
 } // namespace quic

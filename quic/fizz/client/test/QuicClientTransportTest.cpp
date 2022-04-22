@@ -27,6 +27,7 @@
 #include <quic/samples/echo/EchoHandler.h>
 #include <quic/samples/echo/EchoServer.h>
 #include <quic/server/QuicServer.h>
+#include <quic/servermigration/test/Mocks.h>
 
 using namespace testing;
 using namespace folly;
@@ -995,6 +996,13 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
 
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallback) {
+  EXPECT_FALSE(client->setServerMigrationEventCallback(nullptr));
+  MockServerMigrationEventCallback callback;
+  EXPECT_TRUE(client->setServerMigrationEventCallback(&callback));
   client->closeNow(folly::none);
 }
 

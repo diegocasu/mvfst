@@ -126,6 +126,7 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
     folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
     ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
     bool notifiedHandshakeDone{false};
+    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
     folly::Optional<PoolOfAddressesState::Pool> pendingPoolMigrationAddresses;
     folly::Optional<QuicServerMigrationProtocolState> protocolState;
   };
