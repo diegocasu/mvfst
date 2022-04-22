@@ -20,6 +20,7 @@
 #include <quic/happyeyeballs/QuicHappyEyeballsFunctions.h>
 #include <quic/logging/QLoggerConstants.h>
 #include <quic/loss/QuicLossFunctions.h>
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/state/AckHandlers.h>
 #include <quic/state/DatagramHandlers.h>
 #include <quic/state/QuicPacingFunctions.h>
@@ -598,6 +599,12 @@ void QuicClientTransport::processPacketData(
       case QuicFrame::Type::QuicSimpleFrame: {
         QuicSimpleFrame& simpleFrame = *quicFrame.asQuicSimpleFrame();
         pktHasRetransmittableData = true;
+        if (simpleFrame.type() ==
+            QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+          updateServerMigrationFrameOnPacketReceived(
+              *clientConn_, *simpleFrame.asQuicServerMigrationFrame());
+          break;
+        }
         updateSimpleFrameOnPacketReceived(
             *conn_, simpleFrame, packetNum, false);
         break;

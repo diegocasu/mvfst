@@ -37,6 +37,7 @@ add_dependencies(
   mvfst_state_pacing_functions
   mvfst_transport
   mvfst_server_migration_negotiator
+  mvfst_server_migration_frame_functions
 )
 
 target_link_libraries(
@@ -52,6 +53,7 @@ target_link_libraries(
   mvfst_state_pacing_functions
   mvfst_transport
   mvfst_server_migration_negotiator
+  mvfst_server_migration_frame_functions
 )
 
 file(

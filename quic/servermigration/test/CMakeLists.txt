@@ -30,6 +30,7 @@ quic_add_test(TARGET QuicServerMigrationFrameFunctionsTest
   DEPENDS
   Folly::folly
   mvfst_server
+  mvfst_fizz_client
   mvfst_constants
   mvfst_exception
   mvfst_server_migration_frame_functions

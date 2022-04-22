@@ -58,6 +58,7 @@ target_link_libraries(
   mvfst_server_migration_frame_functions PUBLIC
   Folly::folly
   mvfst_server_state
+  mvfst_client
   mvfst_codec_types
 )
 

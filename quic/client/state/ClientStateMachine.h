@@ -32,6 +32,26 @@ struct PendingClientData {
       : networkData(std::move(networkDataIn)), peer(std::move(peerIn)) {}
 };
 
+struct PoolOfAddressesClientState {
+  // Set of possible migration addresses.
+  std::unordered_set<QuicIPAddress, QuicIPAddressHash> migrationAddresses;
+
+  bool operator==(const PoolOfAddressesClientState& rhs) const {
+    return migrationAddresses == rhs.migrationAddresses;
+  }
+
+  bool operator!=(const PoolOfAddressesClientState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
+#define QUIC_SERVER_MIGRATION_PROTOCOL_CLIENT_STATE(F, ...) \
+  F(PoolOfAddressesClientState, __VA_ARGS__)
+
+DECLARE_VARIANT_TYPE(
+    QuicServerMigrationProtocolClientState,
+    QUIC_SERVER_MIGRATION_PROTOCOL_CLIENT_STATE)
+
 struct QuicClientConnectionState : public QuicConnectionStateBase {
   ~QuicClientConnectionState() override = default;
 
@@ -62,6 +82,7 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
   struct ServerMigrationState {
     folly::Optional<QuicServerMigrationNegotiatorClient> negotiator;
     ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+    folly::Optional<QuicServerMigrationProtocolClientState> protocolState;
   };
 
   ServerMigrationState serverMigrationState;
