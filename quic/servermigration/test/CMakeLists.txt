@@ -24,6 +24,17 @@ quic_add_test(TARGET QuicServerMigrationNegotiatorServerTest
   mvfst_handshake
 )
 
+quic_add_test(TARGET QuicServerMigrationFrameFunctionsTest
+  SOURCES
+  ServerMigrationFrameFunctionsTest.cpp
+  DEPENDS
+  Folly::folly
+  mvfst_server
+  mvfst_constants
+  mvfst_exception
+  mvfst_server_migration_frame_functions
+)
+
 quic_add_test(TARGET QuicServerMigrationIntegrationTest
   SOURCES
   QuicServerMigrationIntegrationTest.cpp

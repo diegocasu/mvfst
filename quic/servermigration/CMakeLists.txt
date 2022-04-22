@@ -51,7 +51,6 @@ target_compile_options(
 
 add_dependencies(
   mvfst_server_migration_frame_functions
-  mvfst_server_state
   mvfst_codec_types
 )
 

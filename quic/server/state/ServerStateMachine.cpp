@@ -16,6 +16,7 @@
 #include <quic/flowcontrol/QuicFlowController.h>
 #include <quic/handshake/TransportParameters.h>
 #include <quic/logging/QLoggerConstants.h>
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/state/DatagramHandlers.h>
 #include <quic/state/QuicPacingFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
@@ -1181,6 +1182,13 @@ void onServerReadDataFromOpen(
         case QuicFrame::Type::QuicSimpleFrame: {
           pktHasRetransmittableData = true;
           QuicSimpleFrame& simpleFrame = *quicFrame.asQuicSimpleFrame();
+          if (simpleFrame.type() ==
+              QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+            isNonProbingPacket = true;
+            updateServerMigrationFrameOnPacketReceived(
+                conn, *simpleFrame.asQuicServerMigrationFrame());
+            break;
+          }
           isNonProbingPacket |= updateSimpleFrameOnPacketReceived(
               conn, simpleFrame, packetNum, readData.peer != conn.peerAddress);
           break;

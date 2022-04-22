@@ -36,6 +36,7 @@ add_dependencies(
   mvfst_qlogger
   mvfst_state_ack_handler
   mvfst_server_migration_negotiator
+  mvfst_server_migration_frame_functions
 )
 
 
@@ -116,6 +117,7 @@ target_link_libraries(
   mvfst_transport
   mvfst_transport_knobs
   mvfst_server_migration_negotiator
+  mvfst_server_migration_frame_functions
   ${LIBCCP_LIBRARY}
   ${LIBSTARTCCP_LIBRARY}
 )

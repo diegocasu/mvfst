@@ -270,6 +270,15 @@ bool updateSimpleFrameOnPacketReceived(
       // TODO: client impl
       return true;
     }
+    case QuicSimpleFrame::Type::QuicServerMigrationFrame: {
+      // Add this case to avoid unnecessary warnings from the compiler.
+      // However, the execution flow should never arrive here
+      // (server migration frames must be handled using the functions
+      // provided in ServerMigrationFrameFunctions.h), so an error
+      // is logged just to be sure.
+      LOG(ERROR) << "QuicServerMigrationFrame not handled";
+      return true;
+    }
   }
   folly::assume_unreachable();
 }
