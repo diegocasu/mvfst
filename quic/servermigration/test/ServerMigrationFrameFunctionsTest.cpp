@@ -21,14 +21,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onPoolMigrationAddressReceived)
-      .Times(Exactly(1))
-      .WillOnce([&](PoolMigrationAddressFrame frame) {
-        EXPECT_TRUE(frame == poolMigrationAddressFrame);
-      });
-
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           serverState, poolMigrationAddressFrame),

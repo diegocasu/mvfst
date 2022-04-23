@@ -59,7 +59,8 @@ class ClientStateUpdateCallback {
 
 /**
  * Callbacks invoked when an event related to server migration occurs.
- * They can be implemented both on the client side and the server side.
+ * For each of them, it is specified if it should be implemented on the
+ * client side or on the server side.
  * The callbacks can be invoked by multiple threads (workers) concurrently,
  * if called on the server-side, thus their implementations must be thread-safe.
  * Moreover, since they are executed synchronously when called, their operations
@@ -73,7 +74,8 @@ class ServerMigrationEventCallback {
 
   /**
    * Called when a POOL_MIGRATION_ADDRESS frame is received.
-   * @param frame  the received POOL_MIGRATION_ADDRESS frame
+   * It should be implemented only on the client side.
+   * @param frame  the received POOL_MIGRATION_ADDRESS frame.
    */
   virtual void onPoolMigrationAddressReceived(
       PoolMigrationAddressFrame /*frame*/) noexcept {};
@@ -81,9 +83,13 @@ class ServerMigrationEventCallback {
   /**
    * Called when an acknowledgement for a previously sent
    * POOL_MIGRATION_ADDRESS frame is received.
-   * @param frame  the acknowledged POOL_MIGRATION_ADDRESS frame.
+   * It should be implemented only on the server side.
+   * @param serverConnectionId  the connection ID of the QuicServerTransport
+   *                            instance managing the connection.
+   * @param frame               the acknowledged POOL_MIGRATION_ADDRESS frame.
    */
   virtual void onPoolMigrationAddressAckReceived(
+      ConnectionId /*serverConnectionId*/,
       PoolMigrationAddressFrame /*frame*/) noexcept {};
 };
 

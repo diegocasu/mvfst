@@ -44,7 +44,7 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
   MOCK_METHOD(
       void,
       onPoolMigrationAddressAckReceived,
-      (PoolMigrationAddressFrame frame),
+      (ConnectionId serverConnectionId, PoolMigrationAddressFrame frame),
       (noexcept, override));
 };
 
