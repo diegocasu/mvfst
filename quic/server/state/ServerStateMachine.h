@@ -91,6 +91,7 @@ struct PoolOfAddressesServerState {
   // Set of possible migration addresses. Each address is characterized by a
   // boolean telling if the associated frame has been acknowledged or not.
   Pool migrationAddresses;
+  unsigned int numberOfReceivedAcks{0};
 
   bool operator==(const PoolOfAddressesServerState& rhs) const {
     return migrationAddresses == rhs.migrationAddresses;

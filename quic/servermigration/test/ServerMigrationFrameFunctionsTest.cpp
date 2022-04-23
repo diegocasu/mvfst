@@ -15,6 +15,10 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
       FizzServerQuicHandshakeContext::Builder().build()};
   QuicClientConnectionState clientState{
       FizzClientQuicHandshakeContext::Builder().build()};
+
+  void SetUp() override {
+    serverState.serverConnectionId = ConnectionId::createRandom(8);
+  }
 };
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
@@ -80,6 +84,65 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigration
 
   // TODO add test where clientState.serverMigrationState.protocolState !=
   // QuicServerMigrationProtocolStateClient::Type::PoolOfAddressesStateClient
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAck) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onPoolMigrationAddressAckReceived)
+      .Times(Exactly(4))
+      .WillRepeatedly([&](Unused, PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == poolMigrationAddressFrame);
+      });
+  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+
+  // Test reception without a protocol state.
+  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // TODO add test where serverState.serverMigrationState.protocolState !=
+  // QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState
+
+  // Test reception when there is a protocol state, but the address is unknown.
+  // This is a corner case that should never happen in a correct implementation.
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // Test reception of a correct acknowledgement.
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesServerState();
+  protocolState->migrationAddresses.insert(
+      {poolMigrationAddressFrame.address, false});
+  ASSERT_EQ(protocolState->numberOfReceivedAcks, 0);
+  ASSERT_NE(
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address),
+      protocolState->migrationAddresses.end());
+  ASSERT_FALSE(
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
+          ->second);
+
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, poolMigrationAddressFrame);
+  EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
+  EXPECT_TRUE(
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
+          ->second);
+
+  // Simulate reception of a duplicate acknowledgement.
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, poolMigrationAddressFrame);
+  EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
+  EXPECT_TRUE(
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
+          ->second);
 }
 
 } // namespace test

@@ -1024,6 +1024,12 @@ void onServerReadDataFromOpen(
                   case QuicWriteFrame::Type::QuicSimpleFrame: {
                     const QuicSimpleFrame& frame =
                         *packetFrame.asQuicSimpleFrame();
+                    if (frame.type() ==
+                        QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+                      updateServerMigrationFrameOnPacketAckReceived(
+                          conn, *frame.asQuicServerMigrationFrame());
+                      break;
+                    }
                     // ACK of HandshakeDone is a server-specific behavior.
                     if (frame.asHandshakeDoneFrame()) {
                       // Call handshakeConfirmed outside of the packet
