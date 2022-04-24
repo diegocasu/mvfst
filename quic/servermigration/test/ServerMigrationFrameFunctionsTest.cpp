@@ -183,35 +183,24 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   // QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolMigrationAddressAck) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
   MockServerMigrationEventCallback callback;
   EXPECT_CALL(callback, onPoolMigrationAddressAckReceived)
-      .Times(Exactly(4))
+      .Times(Exactly(2))
       .WillRepeatedly([&](Unused, PoolMigrationAddressFrame frame) {
         EXPECT_TRUE(frame == poolMigrationAddressFrame);
       });
+
   serverState.serverMigrationState.serverMigrationEventCallback = &callback;
-
-  // Test reception without a protocol state.
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame),
-      QuicTransportException);
-
-  // TODO add test where serverState.serverMigrationState.protocolState !=
-  // QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState
-
-  // Test reception when there is a protocol state, but the address is unknown.
-  // This is a corner case that should never happen in a correct implementation.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame),
-      QuicTransportException);
 
   // Test reception of a correct acknowledgement.
   auto protocolState = serverState.serverMigrationState.protocolState
@@ -240,6 +229,57 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigration
   EXPECT_TRUE(
       protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
           ->second);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoolMigrationAddressAck) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onPoolMigrationAddressReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // Test reception without a protocol state.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState.clear();
+  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // Test reception when there is a protocol state, but the address is unknown.
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // TODO add test with protocol state not matching frame type, so where
+  // serverState.serverMigrationState.protocolState !=
+  // QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState
 }
 
 } // namespace test

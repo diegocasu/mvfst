@@ -115,6 +115,38 @@ void throwIfProtocolStateNotMatching(
   folly::assume_unreachable();
 }
 
+/**
+ * Throws a QuicTransportException if the migration protocol state saved
+ * in the server connection state does not match the type of the given frame.
+ * If the protocol state has not already been created, an exception is raised.
+ * @param connectionState  the connection state of the server.
+ * @param frame            the server migration frame.
+ * @param errorMsg         the error message of the exception.
+ * @param errorCode        the error code of the exception.
+ */
+void throwIfProtocolStateNotMatching(
+    const quic::QuicServerConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame,
+    const std::string& errorMsg,
+    const quic::TransportErrorCode errorCode) {
+  if (!connectionState.serverMigrationState.protocolState) {
+    throw quic::QuicTransportException(errorMsg, errorCode);
+  }
+
+  auto protocolStateType =
+      connectionState.serverMigrationState.protocolState->type();
+  switch ((frame.type())) {
+    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
+      if (protocolStateType !=
+          quic::QuicServerMigrationProtocolServerState::Type::
+              PoolOfAddressesServerState) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
+      return;
+  }
+  folly::assume_unreachable();
+}
+
 } // namespace
 
 namespace quic {
@@ -193,6 +225,21 @@ void updateServerMigrationFrameOnPacketReceived(
 void updateServerMigrationFrameOnPacketAckReceived(
     QuicServerConnectionState& connectionState,
     const QuicServerMigrationFrame& frame) {
+  throwIfMigrationIsNotEnabled(
+      connectionState,
+      "Server received a server migration frame acknowledgement, but the server migration is disabled",
+      TransportErrorCode::INTERNAL_ERROR);
+  throwIfCorrespondingProtocolWasNotNegotiated(
+      connectionState,
+      frame,
+      "Server received a server migration frame acknowledgement belonging to a not negotiated protocol",
+      TransportErrorCode::INTERNAL_ERROR);
+  throwIfProtocolStateNotMatching(
+      connectionState,
+      frame,
+      "Server received a server migration frame acknowledgement not matching the protocol in use",
+      TransportErrorCode::INTERNAL_ERROR);
+
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
@@ -202,19 +249,6 @@ void updateServerMigrationFrameOnPacketAckReceived(
             ->onPoolMigrationAddressAckReceived(
                 connectionState.serverConnectionId.value(),
                 poolMigrationAddressFrame);
-      }
-
-      if (!connectionState.serverMigrationState.protocolState) {
-        throw QuicTransportException(
-            "Server received an ack for a POOL_MIGRATION_ADDRESS frame, but no server migration state is present",
-            TransportErrorCode::INTERNAL_ERROR);
-      }
-      if (connectionState.serverMigrationState.protocolState->type() !=
-          QuicServerMigrationProtocolServerState::Type::
-              PoolOfAddressesServerState) {
-        throw QuicTransportException(
-            "Server received an ack for a POOL_MIGRATION_ADDRESS frame, but another server migration protocol is in use",
-            TransportErrorCode::INTERNAL_ERROR);
       }
 
       auto protocolState = connectionState.serverMigrationState.protocolState
