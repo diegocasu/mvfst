@@ -41,9 +41,10 @@ class QuicServerMigrationNegotiator {
    * @return  the list of negotiated protocols.
    */
   const folly::Optional<std::unordered_set<ServerMigrationProtocol>>&
-  getNegotiatedProtocols();
+  getNegotiatedProtocols() const;
 
-  const std::unordered_set<ServerMigrationProtocol>& getSupportedProtocols();
+  const std::unordered_set<ServerMigrationProtocol>& getSupportedProtocols()
+      const;
 
   /**
    * Returns the encoded value of the server_migration_suite transport

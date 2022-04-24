@@ -13,12 +13,12 @@ QuicServerMigrationNegotiator::QuicServerMigrationNegotiator(
 }
 
 const folly::Optional<std::unordered_set<ServerMigrationProtocol>>&
-QuicServerMigrationNegotiator::getNegotiatedProtocols() {
+QuicServerMigrationNegotiator::getNegotiatedProtocols() const {
   return negotiatedProtocols_;
 }
 
 const std::unordered_set<ServerMigrationProtocol>&
-QuicServerMigrationNegotiator::getSupportedProtocols() {
+QuicServerMigrationNegotiator::getSupportedProtocols() const {
   return supportedProtocols_;
 }
 
