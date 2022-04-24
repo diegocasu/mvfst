@@ -37,12 +37,14 @@ class QuicServerMigrationIntegrationTestClient
       uint16_t clientPort,
       std::string serverHost,
       uint16_t serverPort,
-      std::unordered_set<ServerMigrationProtocol> migrationProtocols)
+      std::unordered_set<ServerMigrationProtocol> migrationProtocols,
+      ServerMigrationEventCallback* serverMigrationEventCallback = nullptr)
       : clientHost(std::move(clientHost)),
         clientPort(clientPort),
         serverHost(std::move(serverHost)),
         serverPort(serverPort),
-        migrationProtocols(std::move(migrationProtocols)) {}
+        migrationProtocols(std::move(migrationProtocols)),
+        serverMigrationEventCallback(serverMigrationEventCallback) {}
 
   ~QuicServerMigrationIntegrationTestClient() = default;
 
@@ -149,6 +151,14 @@ class QuicServerMigrationIntegrationTestClient
             << "Disabling support for server migration: no protocols available";
       }
 
+      if (serverMigrationEventCallback) {
+        transport->setServerMigrationEventCallback(
+            serverMigrationEventCallback);
+      } else {
+        LOG(INFO)
+            << "Disabling support for server migration event updates: no callback available";
+      }
+
       transport->start(this, this);
     });
   }
@@ -176,6 +186,7 @@ class QuicServerMigrationIntegrationTestClient
   std::shared_ptr<quic::QuicClientTransport> transport;
   folly::ScopedEventBaseThread networkThread;
   std::unordered_set<ServerMigrationProtocol> migrationProtocols;
+  ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
 
   // Synchronization variables.
   folly::fibers::Baton startDone_;
@@ -307,9 +318,14 @@ class QuicServerMigrationIntegrationTestServer {
    public:
     ServerTransportFactory(
         std::unordered_set<ServerMigrationProtocol> migrationProtocols,
-        ClientStateUpdateCallback* clientStateCallback)
+        std::unordered_set<QuicIPAddress, QuicIPAddressHash>
+            poolMigrationAddresses,
+        ClientStateUpdateCallback* clientStateCallback,
+        ServerMigrationEventCallback* serverMigrationEventCallback)
         : migrationProtocols(std::move(migrationProtocols)),
-          clientStateCallback(clientStateCallback){};
+          poolMigrationAddresses(std::move(poolMigrationAddresses)),
+          clientStateCallback(clientStateCallback),
+          serverMigrationEventCallback(serverMigrationEventCallback){};
 
     ~ServerTransportFactory() override {
       while (!handlers.empty()) {
@@ -338,11 +354,27 @@ class QuicServerMigrationIntegrationTestServer {
             << "Disabling support for server migration: no protocols available";
       }
 
+      if (!poolMigrationAddresses.empty()) {
+        for (auto& address : poolMigrationAddresses) {
+          transport->addPoolMigrationAddress(address);
+        }
+      } else {
+        LOG(INFO) << "No pool migration addresses found";
+      }
+
       if (clientStateCallback) {
         transport->setClientStateUpdateCallback(clientStateCallback);
       } else {
         LOG(INFO)
             << "Disabling support for client state updates: no callback available";
+      }
+
+      if (serverMigrationEventCallback) {
+        transport->setServerMigrationEventCallback(
+            serverMigrationEventCallback);
+      } else {
+        LOG(INFO)
+            << "Disabling support for server migration event updates: no callback available";
       }
 
       handler->setQuicSocket(transport);
@@ -352,20 +384,29 @@ class QuicServerMigrationIntegrationTestServer {
 
     std::vector<std::unique_ptr<MessageHandler>> handlers;
     std::unordered_set<ServerMigrationProtocol> migrationProtocols;
+    std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
     ClientStateUpdateCallback* clientStateCallback{nullptr};
+    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
   };
 
   QuicServerMigrationIntegrationTestServer(
       std::string host,
       uint16_t port,
       std::unordered_set<ServerMigrationProtocol> migrationProtocols,
-      ClientStateUpdateCallback* clientStateCallback)
+      ClientStateUpdateCallback* clientStateCallback = nullptr,
+      ServerMigrationEventCallback* serverMigrationEventCallback = nullptr,
+      std::unordered_set<QuicIPAddress, QuicIPAddressHash>
+          poolMigrationAddresses =
+              std::unordered_set<QuicIPAddress, QuicIPAddressHash>())
       : host(std::move(host)),
         port(port),
         server(QuicServer::createQuicServer()) {
     server->setQuicServerTransportFactory(
         std::make_unique<ServerTransportFactory>(
-            std::move(migrationProtocols), clientStateCallback));
+            std::move(migrationProtocols),
+            std::move(poolMigrationAddresses),
+            clientStateCallback,
+            serverMigrationEventCallback));
 
     auto serverCtx = quic::test::createServerCtx();
     serverCtx->setClock(std::make_shared<fizz::SystemClock>());
@@ -397,6 +438,7 @@ class QuicServerMigrationIntegrationTest : public Test {
   uint16_t clientPort{50001};
   std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
   std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
+  std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
 };
 
 TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
@@ -643,6 +685,219 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 1234));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.2"), 4567));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
+
+  std::string serverCidHex;
+  MockClientStateUpdateCallback clientStateUpdateCallback;
+  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
+  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+
+  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused,
+                    ConnectionId serverConnectionId,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        ASSERT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_EQ(negotiatedProtocols->size(), 1);
+        EXPECT_TRUE(negotiatedProtocols->count(
+            ServerMigrationProtocol::POOL_OF_ADDRESSES));
+        serverCidHex = serverConnectionId.hex();
+      });
+  EXPECT_CALL(
+      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      .Times(Exactly(poolMigrationAddresses.size()))
+      .WillRepeatedly([&](PoolMigrationAddressFrame frame) {
+        auto it = poolMigrationAddresses.find(frame.address);
+        EXPECT_NE(it, poolMigrationAddresses.end());
+      });
+  EXPECT_CALL(
+      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      .Times(Exactly(poolMigrationAddresses.size()))
+      .WillRepeatedly([&](ConnectionId serverConnectionId,
+                          PoolMigrationAddressFrame frame) {
+        EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+        auto it = poolMigrationAddresses.find(frame.address);
+        EXPECT_NE(it, poolMigrationAddresses.end());
+      });
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      &clientStateUpdateCallback,
+      &serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      &serverMigrationEventCallbackClientSide);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsuccessfulNegotiation) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 1234));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.2"), 4567));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
+
+  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
+  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+
+  EXPECT_CALL(
+      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      .Times(0);
+  EXPECT_CALL(
+      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      .Times(0);
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      nullptr,
+      &serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      &serverMigrationEventCallbackClientSide);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegotiation) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 1234));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.2"), 4567));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
+
+  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
+  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+
+  EXPECT_CALL(
+      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      .Times(0);
+  EXPECT_CALL(
+      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      .Times(0);
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      nullptr,
+      &serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      &serverMigrationEventCallbackClientSide);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  client.messageReceived.wait();
+
+  client.close();
+  server.server->shutdown();
+}
+
+TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDifferentProtocolNegotiated) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 1234));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.2"), 4567));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
+
+  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
+  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+
+  EXPECT_CALL(
+      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      .Times(0);
+  EXPECT_CALL(
+      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      .Times(0);
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      nullptr,
+      &serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      &serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
