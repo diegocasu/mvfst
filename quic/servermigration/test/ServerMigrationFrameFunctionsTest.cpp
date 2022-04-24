@@ -96,7 +96,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
       QuicTransportException);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddress) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolMigrationAddress) {
   PoolMigrationAddressFrame poolMigrationAddressFrame1(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
   PoolMigrationAddressFrame poolMigrationAddressFrame2(
@@ -113,8 +113,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigration
       });
 
   clientState.serverMigrationState.serverMigrationEventCallback = &callback;
-  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
 
+  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
       clientState, poolMigrationAddressFrame1));
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
@@ -146,9 +151,36 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigration
       clientState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
           ->migrationAddresses.count(poolMigrationAddressFrame2.address));
+}
 
-  // TODO add test where clientState.serverMigrationState.protocolState !=
-  // QuicServerMigrationProtocolStateClient::Type::PoolOfAddressesStateClient
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoolMigrationAddress) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  // TODO add test with protocol state not matching frame type, so where
+  // clientState.serverMigrationState.protocolState !=
+  // QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAck) {

@@ -83,6 +83,38 @@ void throwIfCorrespondingProtocolWasNotNegotiated(
   folly::assume_unreachable();
 }
 
+/**
+ * Throws a QuicTransportException if the migration protocol state saved
+ * in the client connection state does not match the type of the given frame.
+ * If the protocol state has not already been created, no exception is raised.
+ * @param connectionState  the connection state of the client.
+ * @param frame            the server migration frame.
+ * @param errorMsg         the error message of the exception.
+ * @param errorCode        the error code of the exception.
+ */
+void throwIfProtocolStateNotMatching(
+    const quic::QuicClientConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame,
+    const std::string& errorMsg,
+    const quic::TransportErrorCode errorCode) {
+  if (!connectionState.serverMigrationState.protocolState) {
+    return;
+  }
+
+  auto protocolStateType =
+      connectionState.serverMigrationState.protocolState->type();
+  switch ((frame.type())) {
+    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
+      if (protocolStateType !=
+          quic::QuicServerMigrationProtocolClientState::Type::
+              PoolOfAddressesClientState) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
+      return;
+  }
+  folly::assume_unreachable();
+}
+
 } // namespace
 
 namespace quic {
@@ -117,6 +149,21 @@ void updateServerMigrationFrameOnPacketReceived(
 void updateServerMigrationFrameOnPacketReceived(
     QuicClientConnectionState& connectionState,
     const QuicServerMigrationFrame& frame) {
+  throwIfMigrationIsNotEnabled(
+      connectionState,
+      "Client received a server migration frame, but the server migration is disabled",
+      TransportErrorCode::PROTOCOL_VIOLATION);
+  throwIfCorrespondingProtocolWasNotNegotiated(
+      connectionState,
+      frame,
+      "Client received a server migration frame belonging to a not negotiated protocol",
+      TransportErrorCode::PROTOCOL_VIOLATION);
+  throwIfProtocolStateNotMatching(
+      connectionState,
+      frame,
+      "Client received a server migration frame not matching the protocol in use",
+      TransportErrorCode::PROTOCOL_VIOLATION);
+
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
@@ -127,13 +174,6 @@ void updateServerMigrationFrameOnPacketReceived(
       }
 
       if (connectionState.serverMigrationState.protocolState) {
-        if (connectionState.serverMigrationState.protocolState->type() !=
-            QuicServerMigrationProtocolClientState::Type::
-                PoolOfAddressesClientState) {
-          throw QuicTransportException(
-              "Client received a POOL_MIGRATION_ADDRESS frame, but another server migration protocol is in use",
-              TransportErrorCode::PROTOCOL_VIOLATION);
-        }
         connectionState.serverMigrationState.protocolState
             ->asPoolOfAddressesClientState()
             ->migrationAddresses.insert(poolMigrationAddressFrame.address);
