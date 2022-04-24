@@ -21,6 +21,19 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
   }
 };
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
+  ServerMigratedFrame frame;
+  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+  sendServerMigrationFrame(serverState, frame);
+  EXPECT_FALSE(serverState.pendingEvents.frames.empty());
+  EXPECT_EQ(serverState.pendingEvents.frames.size(), 1);
+  EXPECT_EQ(
+      *serverState.pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigratedFrame(),
+      frame);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
