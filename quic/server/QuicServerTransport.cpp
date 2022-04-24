@@ -651,8 +651,11 @@ void QuicServerTransport::maybeNotifyHandshakeFinished() {
 
 void QuicServerTransport::maybeSendPoolMigrationAddresses() {
   if (serverConn_->serverHandshakeLayer->isHandshakeDone() &&
+      serverConn_->serverMigrationState.negotiator &&
       serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
-    if (!serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
+    if (!serverConn_->serverMigrationState.negotiator
+             ->getNegotiatedProtocols() ||
+        !serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
              ->count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
       LOG(INFO)
           << "Ignoring the address pool due to Pool of Addresses not negotiated";
