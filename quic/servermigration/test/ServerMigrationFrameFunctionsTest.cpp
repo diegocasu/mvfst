@@ -47,7 +47,7 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
   }
 };
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestCorrectSendServerMigrationFrame) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedSendServerMigrationFrame) {
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   enableServerMigrationServerSide();
@@ -66,7 +66,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestCorrectSendServerMigrationFram
       frame);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestWrongSendServerMigrationFrame) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedSendServerMigrationFrame) {
   ASSERT_TRUE(serverState.pendingEvents.frames.empty());
 
   // Test with server migration not enabled.

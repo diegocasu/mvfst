@@ -46,7 +46,7 @@ void throwIfMigrationIsNotEnabled(
  * @param errorCode        the error code of the exception.
  */
 template <class T>
-void throwIfCorrespondingProtocolWasNotNegotiated(
+void throwIfProtocolWasNotNegotiated(
     const T& connectionState,
     const quic::QuicServerMigrationFrame& frame,
     const std::string& errorMsg,
@@ -158,7 +158,7 @@ void sendServerMigrationFrame(
       connectionState,
       "Attempting to send a server migration frame with server migration disabled",
       TransportErrorCode::INTERNAL_ERROR);
-  throwIfCorrespondingProtocolWasNotNegotiated(
+  throwIfProtocolWasNotNegotiated(
       connectionState,
       frame,
       "Attempting to send a server migration frame belonging to a not negotiated protocol",
@@ -185,7 +185,7 @@ void updateServerMigrationFrameOnPacketReceived(
       connectionState,
       "Client received a server migration frame, but the server migration is disabled",
       TransportErrorCode::PROTOCOL_VIOLATION);
-  throwIfCorrespondingProtocolWasNotNegotiated(
+  throwIfProtocolWasNotNegotiated(
       connectionState,
       frame,
       "Client received a server migration frame belonging to a not negotiated protocol",
@@ -229,7 +229,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
       connectionState,
       "Server received a server migration frame acknowledgement, but the server migration is disabled",
       TransportErrorCode::INTERNAL_ERROR);
-  throwIfCorrespondingProtocolWasNotNegotiated(
+  throwIfProtocolWasNotNegotiated(
       connectionState,
       frame,
       "Server received a server migration frame acknowledgement belonging to a not negotiated protocol",
