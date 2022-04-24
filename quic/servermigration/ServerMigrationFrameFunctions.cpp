@@ -1,10 +1,104 @@
 #include <quic/servermigration/ServerMigrationFrameFunctions.h>
 
+namespace {
+
+/**
+ * Throws a QuicTransportException if the server migration is not enabled,
+ * namely if one of the following conditions is true:
+ * 1) the negotiator is not initialized;
+ * 2) the negotiation did not happen;
+ * 3) the negotiation ended with no protocols in common between the endpoints.
+ * @tparam T               either QuicServerConnectionState or
+ *                         QuicClientConnectionState.
+ * @param connectionState  the connection state of the client or the server.
+ * @param errorMsg         the error message of the exception.
+ * @param errorCode        the error code of the exception.
+ */
+template <class T>
+void throwIfMigrationIsNotEnabled(
+    const T& connectionState,
+    const std::string& errorMsg,
+    const quic::TransportErrorCode errorCode) {
+  static_assert(
+      std::is_same<T, quic::QuicServerConnectionState>::value ||
+          std::is_same<T, quic::QuicClientConnectionState>::value,
+      "Template type parameter must be either QuicServerConnectionState or QuicClientConnectionState");
+
+  if (!connectionState.serverMigrationState.negotiator ||
+      !connectionState.serverMigrationState.negotiator
+           ->getNegotiatedProtocols() ||
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          ->empty()) {
+    throw quic::QuicTransportException(errorMsg, errorCode);
+  }
+}
+
+/**
+ * Throws a QuicTransportException if the given frame type does not belong to
+ * one of the negotiated server migration protocols.
+ * The function assumes that the server migration is enabled, i.e. that
+ * a call to throwIfServerMigrationIsNotEnabled() does not cause an exception.
+ * @tparam T               either QuicServerConnectionState or
+ *                         QuicClientConnectionState.
+ * @param connectionState  the connection state of the client or the server.
+ * @param frame            the server migration frame.
+ * @param errorMsg         the error message of the exception.
+ * @param errorCode        the error code of the exception.
+ */
+template <class T>
+void throwIfCorrespondingProtocolWasNotNegotiated(
+    const T& connectionState,
+    const quic::QuicServerMigrationFrame& frame,
+    const std::string& errorMsg,
+    const quic::TransportErrorCode errorCode) {
+  static_assert(
+      std::is_same<T, quic::QuicServerConnectionState>::value ||
+          std::is_same<T, quic::QuicClientConnectionState>::value,
+      "Template type parameter must be either QuicServerConnectionState or QuicClientConnectionState");
+
+  auto& negotiatedProtocols =
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .value();
+  switch (frame.type()) {
+    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame:
+      if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT) ||
+          !negotiatedProtocols.count(
+              quic::ServerMigrationProtocol::SYMMETRIC)) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
+      return;
+    case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      if (!negotiatedProtocols.count(
+              quic::ServerMigrationProtocol::SYMMETRIC)) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
+      return;
+    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
+      if (!negotiatedProtocols.count(
+              quic::ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
+      return;
+  }
+  folly::assume_unreachable();
+}
+
+} // namespace
+
 namespace quic {
 
 void sendServerMigrationFrame(
     QuicServerConnectionState& connectionState,
     QuicServerMigrationFrame frame) {
+  throwIfMigrationIsNotEnabled(
+      connectionState,
+      "Attempting to send a server migration frame with server migration disabled",
+      TransportErrorCode::INTERNAL_ERROR);
+  throwIfCorrespondingProtocolWasNotNegotiated(
+      connectionState,
+      frame,
+      "Attempting to send a server migration frame belonging to a not negotiated protocol",
+      TransportErrorCode::INTERNAL_ERROR);
   connectionState.pendingEvents.frames.emplace_back(std::move(frame));
 }
 

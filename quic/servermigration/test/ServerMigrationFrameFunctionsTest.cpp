@@ -15,15 +15,47 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
       FizzServerQuicHandshakeContext::Builder().build()};
   QuicClientConnectionState clientState{
       FizzClientQuicHandshakeContext::Builder().build()};
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
 
   void SetUp() override {
     serverState.serverConnectionId = ConnectionId::createRandom(8);
   }
+
+  void enableServerMigrationServerSide() {
+    serverState.serverMigrationState.negotiator =
+        QuicServerMigrationNegotiatorServer(serverSupportedProtocols);
+  }
+
+  void enableServerMigrationClientSide() {
+    clientState.serverMigrationState.negotiator =
+        QuicServerMigrationNegotiatorClient(clientSupportedProtocols);
+  }
+
+  void doNegotiation() {
+    CHECK(
+        serverState.serverMigrationState.negotiator &&
+        clientState.serverMigrationState.negotiator);
+    auto clientParameter = clientState.serverMigrationState.negotiator.value()
+                               .onTransportParametersEncoding();
+    serverState.serverMigrationState.negotiator->onMigrationSuiteReceived(
+        clientParameter);
+    auto serverParameter = serverState.serverMigrationState.negotiator
+                               ->onTransportParametersEncoding();
+    clientState.serverMigrationState.negotiator->onMigrationSuiteReceived(
+        serverParameter);
+  }
 };
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
-  ServerMigratedFrame frame;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestCorrectSendServerMigrationFrame) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
   ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+  ServerMigratedFrame frame;
   sendServerMigrationFrame(serverState, frame);
   EXPECT_FALSE(serverState.pendingEvents.frames.empty());
   EXPECT_EQ(serverState.pendingEvents.frames.size(), 1);
@@ -32,6 +64,26 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
            .asQuicServerMigrationFrame()
            ->asServerMigratedFrame(),
       frame);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestWrongSendServerMigrationFrame) {
+  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+
+  // Test with server migration not enabled.
+  ServerMigratedFrame frame;
+  EXPECT_THROW(
+      sendServerMigrationFrame(serverState, frame), QuicTransportException);
+  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
+
+  // Test with negotiated protocol not matching the frame type.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      sendServerMigrationFrame(serverState, frame), QuicTransportException);
+  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
