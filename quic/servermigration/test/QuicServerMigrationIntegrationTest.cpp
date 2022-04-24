@@ -75,6 +75,12 @@ class QuicServerMigrationIntegrationTestClient
   void onConnectionError(QuicError error) noexcept override {
     LOG(ERROR) << "Connection error: " << toString(error.code)
                << "; errStr=" << error.message;
+    EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
+    if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
+      auto errorCode = *error.code.asLocalErrorCode();
+      EXPECT_NE(errorCode, LocalErrorCode::INTERNAL_ERROR);
+      EXPECT_NE(errorCode, LocalErrorCode::TRANSPORT_ERROR);
+    }
     startDone_.post();
   }
 
@@ -241,6 +247,12 @@ class QuicServerMigrationIntegrationTestServer {
     void onConnectionError(QuicError error) noexcept override {
       LOG(ERROR) << "Connection error: " << toString(error.code)
                  << "; errStr=" << error.message;
+      EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
+      if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
+        auto errorCode = *error.code.asLocalErrorCode();
+        EXPECT_NE(errorCode, LocalErrorCode::INTERNAL_ERROR);
+        EXPECT_NE(errorCode, LocalErrorCode::TRANSPORT_ERROR);
+      }
     }
 
     void readAvailable(quic::StreamId id) noexcept override {
