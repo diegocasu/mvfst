@@ -65,4 +65,14 @@ folly::Optional<QuicSimpleFrame> updateServerMigrationFrameOnPacketClone(
     QuicConnectionStateBase& connectionState,
     const QuicServerMigrationFrame& frame);
 
+/**
+ * Updates the connection state after the loss
+ * of the given server migration frame.
+ * @param connectionState  the connection state.
+ * @param frame            the lost server migration frame.
+ */
+void updateServerMigrationFrameOnPacketLoss(
+    QuicConnectionStateBase& connectionState,
+    const QuicServerMigrationFrame& frame);
+
 } // namespace quic

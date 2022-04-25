@@ -6,6 +6,7 @@
  */
 
 #include <quic/loss/QuicLossFunctions.h>
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
 
 namespace quic {
@@ -202,6 +203,11 @@ void markPacketLoss(
       case QuicWriteFrame::Type::QuicSimpleFrame: {
         QuicSimpleFrame& frame = *packetFrame.asQuicSimpleFrame();
         if (processed) {
+          break;
+        }
+        if (frame.type() == QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+          updateServerMigrationFrameOnPacketLoss(
+              conn, *frame.asQuicServerMigrationFrame());
           break;
         }
         updateSimpleFrameOnPacketLoss(conn, frame);

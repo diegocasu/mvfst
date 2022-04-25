@@ -288,4 +288,11 @@ folly::Optional<QuicSimpleFrame> updateServerMigrationFrameOnPacketClone(
   return QuicSimpleFrame(QuicServerMigrationFrame(frame));
 }
 
+void updateServerMigrationFrameOnPacketLoss(
+    QuicConnectionStateBase& connectionState,
+    const QuicServerMigrationFrame& frame) {
+  // Retransmit frame.
+  connectionState.pendingEvents.frames.emplace_back(std::move(frame));
+}
+
 } // namespace quic

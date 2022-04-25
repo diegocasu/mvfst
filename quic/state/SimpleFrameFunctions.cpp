@@ -122,6 +122,13 @@ void updateSimpleFrameOnPacketLoss(
     case QuicSimpleFrame::Type::NewTokenFrame:
       conn.pendingEvents.frames.push_back(frame);
       break;
+    case QuicSimpleFrame::Type::QuicServerMigrationFrame:
+      // The execution flow should never arrive here
+      // (server migration frames must be handled using the functions
+      // provided in ServerMigrationFrameFunctions.h), so an error
+      // is logged just to be sure.
+      LOG(ERROR) << "QuicServerMigrationFrame not handled";
+      break;
   }
 }
 
