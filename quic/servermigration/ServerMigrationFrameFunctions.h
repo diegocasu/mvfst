@@ -46,4 +46,13 @@ void updateServerMigrationFrameOnPacketAckReceived(
     QuicServerConnectionState& connectionState,
     const QuicServerMigrationFrame& frame);
 
+/**
+ * Updates the connection state after sending the given server migration frame.
+ * @param connectionState  the connection state.
+ * @param frame            the server migration frame that was sent.
+ */
+void updateServerMigrationFrameOnPacketSent(
+    QuicConnectionStateBase& connectionState,
+    const QuicServerMigrationFrame& frame);
+
 } // namespace quic

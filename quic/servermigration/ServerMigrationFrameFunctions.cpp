@@ -272,4 +272,14 @@ void updateServerMigrationFrameOnPacketAckReceived(
   folly::assume_unreachable();
 }
 
+void updateServerMigrationFrameOnPacketSent(
+    QuicConnectionStateBase& connectionState,
+    const QuicServerMigrationFrame& frame) {
+  auto& frames = connectionState.pendingEvents.frames;
+  auto it = std::find(frames.begin(), frames.end(), frame);
+  if (it != frames.end()) {
+    frames.erase(it);
+  }
+}
+
 } // namespace quic

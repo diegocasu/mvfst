@@ -15,6 +15,7 @@
 #include <quic/flowcontrol/QuicFlowController.h>
 #include <quic/happyeyeballs/QuicHappyEyeballsFunctions.h>
 
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/state/AckHandlers.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
@@ -780,6 +781,12 @@ void updateConnection(
         retransmittable = true;
         // We don't want this triggered for cloned frames.
         if (!packetEvent.has_value()) {
+          if (simpleFrame.type() ==
+              QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+            updateServerMigrationFrameOnPacketSent(
+                conn, *simpleFrame.asQuicServerMigrationFrame());
+            break;
+          }
           updateSimpleFrameOnPacketSent(conn, simpleFrame);
         }
         break;

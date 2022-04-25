@@ -282,5 +282,26 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoo
   // QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateServerMigrationFrameOnPacketSent) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+  ServerMigratedFrame frame;
+  sendServerMigrationFrame(serverState, frame);
+  ASSERT_EQ(serverState.pendingEvents.frames.size(), 1);
+  ASSERT_EQ(
+      *serverState.pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigratedFrame(),
+      frame);
+
+  updateServerMigrationFrameOnPacketSent(serverState, frame);
+  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
+}
+
 } // namespace test
 } // namespace quic

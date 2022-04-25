@@ -80,6 +80,7 @@ target_link_libraries(
   mvfst_state_simple_frame_functions
   mvfst_state_stream
   mvfst_state_stream_functions
+  mvfst_server_migration_frame_functions
   PRIVATE
   ${BOOST_LIBRARIES}
 )
