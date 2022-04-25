@@ -775,6 +775,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
   client.send("ping");
   client.messageReceived.wait();
 
+  // Send a second message to be sure that the acks,
+  // if present, are received by the server.
+  client.messageReceived.reset();
+  client.send("ping");
+  client.messageReceived.wait();
+
   client.close();
   server.server->shutdown();
 }
@@ -819,6 +825,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
   client.start();
   client.startDone_.wait();
 
+  client.send("ping");
+  client.messageReceived.wait();
+
+  // Send a second message to be sure that the acks,
+  // if present, are received by the server.
+  client.messageReceived.reset();
   client.send("ping");
   client.messageReceived.wait();
 
@@ -868,6 +880,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
   client.send("ping");
   client.messageReceived.wait();
 
+  // Send a second message to be sure that the acks,
+  // if present, are received by the server.
+  client.messageReceived.reset();
+  client.send("ping");
+  client.messageReceived.wait();
+
   client.close();
   server.server->shutdown();
 }
@@ -913,6 +931,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
   client.start();
   client.startDone_.wait();
 
+  client.send("ping");
+  client.messageReceived.wait();
+
+  // Send a second message to be sure that the acks,
+  // if present, are received by the server.
+  client.messageReceived.reset();
   client.send("ping");
   client.messageReceived.wait();
 
