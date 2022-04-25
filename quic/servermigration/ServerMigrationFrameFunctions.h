@@ -55,4 +55,14 @@ void updateServerMigrationFrameOnPacketSent(
     QuicConnectionStateBase& connectionState,
     const QuicServerMigrationFrame& frame);
 
+/**
+ * Updates the connection state on cloning the given server migration frame.
+ * @param connectionState  the connection state.
+ * @param frame            the server migration frame.
+ * @return                 the updated server migration frame as simple frame.
+ */
+folly::Optional<QuicSimpleFrame> updateServerMigrationFrameOnPacketClone(
+    QuicConnectionStateBase& connectionState,
+    const QuicServerMigrationFrame& frame);
+
 } // namespace quic

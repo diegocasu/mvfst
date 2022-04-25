@@ -282,4 +282,10 @@ void updateServerMigrationFrameOnPacketSent(
   }
 }
 
+folly::Optional<QuicSimpleFrame> updateServerMigrationFrameOnPacketClone(
+    QuicConnectionStateBase& /*connectionState*/,
+    const QuicServerMigrationFrame& frame) {
+  return QuicSimpleFrame(QuicServerMigrationFrame(frame));
+}
+
 } // namespace quic

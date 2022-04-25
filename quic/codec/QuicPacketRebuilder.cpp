@@ -8,6 +8,7 @@
 #include <quic/codec/QuicPacketRebuilder.h>
 #include <quic/codec/QuicWriteCodec.h>
 #include <quic/flowcontrol/QuicFlowController.h>
+#include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
 #include <quic/state/SimpleFrameFunctions.h>
@@ -176,8 +177,15 @@ folly::Optional<PacketEvent> PacketRebuilder::rebuildFromPacket(
       }
       case QuicWriteFrame::Type::QuicSimpleFrame: {
         const QuicSimpleFrame& simpleFrame = *frame.asQuicSimpleFrame();
-        auto updatedSimpleFrame =
-            updateSimpleFrameOnPacketClone(conn_, simpleFrame);
+        folly::Optional<QuicSimpleFrame> updatedSimpleFrame;
+        if (simpleFrame.type() ==
+            QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+          updatedSimpleFrame = updateServerMigrationFrameOnPacketClone(
+              conn_, *simpleFrame.asQuicServerMigrationFrame());
+        } else {
+          updatedSimpleFrame =
+              updateSimpleFrameOnPacketClone(conn_, simpleFrame);
+        }
         if (!updatedSimpleFrame) {
           writeSuccess = true;
           break;

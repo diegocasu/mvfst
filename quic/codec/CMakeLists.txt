@@ -167,6 +167,7 @@ target_link_libraries(
   mvfst_state_machine
   mvfst_state_simple_frame_functions
   mvfst_state_stream_functions
+  mvfst_server_migration_frame_functions
 )
 
 add_library(
