@@ -24,12 +24,14 @@ target_compile_options(
 add_dependencies(
   mvfst_fizz_client
   mvfst_client
+  mvfst_client_state
   mvfst_fizz_handshake
 )
 
 target_link_libraries(
   mvfst_fizz_client PUBLIC
   mvfst_client
+  mvfst_client_state
   mvfst_fizz_handshake
 )
 
