@@ -61,15 +61,17 @@ void throwIfProtocolWasNotNegotiated(
           .value();
   switch (frame.type()) {
     case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame:
-      if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT) ||
+      if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT) &&
           !negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::SYMMETRIC)) {
+              quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
         throw quic::QuicTransportException(errorMsg, errorCode);
       }
       return;
     case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
       if (!negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::SYMMETRIC)) {
+              quic::ServerMigrationProtocol::SYMMETRIC) &&
+          !negotiatedProtocols.count(
+              quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
         throw quic::QuicTransportException(errorMsg, errorCode);
       }
       return;

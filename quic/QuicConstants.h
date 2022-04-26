@@ -659,7 +659,8 @@ enum class ServerMigrationProtocol : uint64_t {
   EXPLICIT = 0x1,
   POOL_OF_ADDRESSES = 0x1 << 1,
   SYMMETRIC = 0x1 << 2,
-  MAX = SYMMETRIC,
+  SYNCHRONIZED_SYMMETRIC = 0x1 << 3,
+  MAX = SYNCHRONIZED_SYMMETRIC,
 };
 
 } // namespace quic
