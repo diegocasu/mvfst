@@ -52,6 +52,7 @@ add_dependencies(
   mvfst_state_simple_frame_functions
   mvfst_state_stream
   mvfst_state_stream_functions
+  mvfst_server_migration_frame_functions
 )
 
 target_link_libraries(

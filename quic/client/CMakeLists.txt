@@ -7,8 +7,6 @@ add_library(
   mvfst_client STATIC
   QuicClientTransport.cpp
   QuicClientAsyncTransport.cpp
-  handshake/ClientHandshake.cpp
-  state/ClientStateMachine.cpp
   connector/QuicConnector.cpp
 )
 
@@ -36,7 +34,7 @@ add_dependencies(
   mvfst_state_datagram_handler
   mvfst_state_pacing_functions
   mvfst_transport
-  mvfst_server_migration_negotiator
+  mvfst_client_state
   mvfst_server_migration_frame_functions
 )
 
@@ -52,8 +50,41 @@ target_link_libraries(
   mvfst_state_datagram_handler
   mvfst_state_pacing_functions
   mvfst_transport
-  mvfst_server_migration_negotiator
+  mvfst_client_state
   mvfst_server_migration_frame_functions
+)
+
+add_library(
+  mvfst_client_state STATIC
+  handshake/ClientHandshake.cpp
+  state/ClientStateMachine.cpp
+)
+
+target_include_directories(
+  mvfst_client_state PUBLIC
+  $<BUILD_INTERFACE:${QUIC_FBCODE_ROOT}>
+  $<INSTALL_INTERFACE:include/>
+)
+
+target_compile_options(
+  mvfst_client_state
+  PRIVATE
+  ${_QUIC_COMMON_COMPILE_OPTIONS}
+)
+
+add_dependencies(
+  mvfst_client_state
+  mvfst_flowcontrol
+  mvfst_loss
+  mvfst_server_migration_negotiator
+)
+
+target_link_libraries(
+  mvfst_client_state PUBLIC
+  Folly::folly
+  mvfst_flowcontrol
+  mvfst_loss
+  mvfst_server_migration_negotiator
 )
 
 file(
@@ -69,6 +100,12 @@ endforeach()
 
 install(
   TARGETS mvfst_client
+  EXPORT mvfst-exports
+  DESTINATION lib
+)
+
+install(
+  TARGETS mvfst_client_state
   EXPORT mvfst-exports
   DESTINATION lib
 )

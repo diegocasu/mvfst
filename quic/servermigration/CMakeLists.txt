@@ -33,7 +33,7 @@ target_link_libraries(
 )
 
 add_library(
-  mvfst_server_migration_frame_functions
+  mvfst_server_migration_frame_functions STATIC
   ServerMigrationFrameFunctions.cpp
 )
 
@@ -58,7 +58,7 @@ target_link_libraries(
   mvfst_server_migration_frame_functions PUBLIC
   Folly::folly
   mvfst_server_state
-  mvfst_client
+  mvfst_client_state
   mvfst_codec_types
 )
 

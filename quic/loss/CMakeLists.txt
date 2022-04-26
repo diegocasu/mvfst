@@ -30,6 +30,7 @@ add_dependencies(
   mvfst_state_machine
   mvfst_state_simple_frame_functions
   mvfst_d6d_state_functions
+  mvfst_server_migration_frame_functions
 )
 
 target_link_libraries(
@@ -43,6 +44,7 @@ target_link_libraries(
   mvfst_state_machine
   mvfst_state_simple_frame_functions
   mvfst_d6d_state_functions
+  mvfst_server_migration_frame_functions
 )
 
 file(

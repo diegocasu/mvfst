@@ -12,7 +12,7 @@ quic_add_test(TARGET QuicFlowControlTest
   QuicFlowControlTest.cpp
   DEPENDS
   Folly::folly
-  mvfst_client
+  mvfst_client_state
   mvfst_flowcontrol
   mvfst_test_utils
 )
