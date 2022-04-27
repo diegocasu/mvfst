@@ -586,8 +586,9 @@ void onConnectionMigration(
   }
 
   if (conn.serverMigrationState.clientStateUpdateCallback) {
-    conn.serverMigrationState.clientStateUpdateCallback->onMigrationDetected(
-        conn.serverConnectionId.value(), newPeerAddress);
+    conn.serverMigrationState.clientStateUpdateCallback
+        ->onClientMigrationDetected(
+            conn.serverConnectionId.value(), newPeerAddress);
   }
 
   conn.peerAddress = newPeerAddress;

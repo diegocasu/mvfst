@@ -20,7 +20,7 @@ class MockClientStateUpdateCallback : public ClientStateUpdateCallback {
 
   MOCK_METHOD(
       void,
-      onMigrationDetected,
+      onClientMigrationDetected,
       (ConnectionId serverConnectionId, folly::SocketAddress newAddress),
       (noexcept, override));
 

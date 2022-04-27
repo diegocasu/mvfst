@@ -43,7 +43,7 @@ class ClientStateUpdateCallback {
    *                            connection with the client.
    * @param newClientAddress    the new IP address and port of the client.
    */
-  virtual void onMigrationDetected(
+  virtual void onClientMigrationDetected(
       ConnectionId serverConnectionId,
       folly::SocketAddress newClientAddress) noexcept = 0;
 

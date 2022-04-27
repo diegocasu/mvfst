@@ -552,7 +552,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
         .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
           serverCidHex = serverConnectionId.hex();
         });
-    EXPECT_CALL(clientStateUpdateCallback, onMigrationDetected)
+    EXPECT_CALL(clientStateUpdateCallback, onClientMigrationDetected)
         .Times(Exactly(1))
         .WillOnce([&](ConnectionId serverConnectionId,
                       folly::SocketAddress newClientAddress) {
