@@ -94,7 +94,8 @@ struct PoolOfAddressesServerState {
   unsigned int numberOfReceivedAcks{0};
 
   bool operator==(const PoolOfAddressesServerState& rhs) const {
-    return migrationAddresses == rhs.migrationAddresses;
+    return migrationAddresses == rhs.migrationAddresses &&
+        numberOfReceivedAcks == rhs.numberOfReceivedAcks;
   }
 
   bool operator!=(const PoolOfAddressesServerState& rhs) const {
