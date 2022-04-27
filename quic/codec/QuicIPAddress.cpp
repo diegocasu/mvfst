@@ -42,7 +42,7 @@ QuicIPAddress::QuicIPAddress(
       ipv6Address(ipv6Address),
       ipv6Port(ipv6Port) {}
 
-bool QuicIPAddress::isAllZero() {
+bool QuicIPAddress::isAllZero() const {
   return ipv4Address == folly::IPAddressV4("0.0.0.0") && ipv4Port == 0 &&
       ipv6Address == folly::IPAddressV6("::") && ipv6Port == 0;
 }

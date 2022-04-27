@@ -40,7 +40,7 @@ struct QuicIPAddress {
 
   bool operator==(const QuicIPAddress& rhs) const;
   bool operator!=(const QuicIPAddress& rhs) const;
-  bool isAllZero();
+  bool isAllZero() const;
 };
 
 struct QuicIPAddressHash {
