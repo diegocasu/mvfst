@@ -277,9 +277,12 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoo
           serverState, poolMigrationAddressFrame),
       QuicTransportException);
 
-  // TODO add test with protocol state not matching frame type, so where
-  // serverState.serverMigrationState.protocolState !=
-  // QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState
+  // Test with protocol state not matching the frame type.
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame),
+      QuicTransportException);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateServerMigrationFrameOnPacketSent) {

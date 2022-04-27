@@ -103,8 +103,40 @@ struct PoolOfAddressesServerState {
   }
 };
 
+struct ExplicitServerState {
+  QuicIPAddress migrationAddress;
+  bool migrationAcknowledged{false};
+
+  ExplicitServerState(QuicIPAddress migrationAddress)
+      : migrationAddress(std::move(migrationAddress)) {}
+
+  bool operator==(const ExplicitServerState& rhs) const {
+    return migrationAddress == rhs.migrationAddress &&
+        migrationAcknowledged == rhs.migrationAcknowledged;
+  }
+
+  bool operator!=(const ExplicitServerState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
+// State for both the Symmetric and Synchronized Symmetric protocols.
+struct SymmetricServerState {
+  folly::Optional<bool> migrationAcknowledged{false};
+
+  bool operator==(const SymmetricServerState& rhs) const {
+    return migrationAcknowledged == rhs.migrationAcknowledged;
+  }
+
+  bool operator!=(const SymmetricServerState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
 #define QUIC_SERVER_MIGRATION_PROTOCOL_SERVER_STATE(F, ...) \
-  F(PoolOfAddressesServerState, __VA_ARGS__)
+  F(PoolOfAddressesServerState, __VA_ARGS__)                \
+  F(ExplicitServerState, __VA_ARGS__)                       \
+  F(SymmetricServerState, __VA_ARGS__)
 
 DECLARE_VARIANT_TYPE(
     QuicServerMigrationProtocolServerState,
