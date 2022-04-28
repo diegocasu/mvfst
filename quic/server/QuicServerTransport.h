@@ -258,6 +258,8 @@ class QuicServerTransport
 
   void handleExplicitImminentServerMigration(
       const folly::Optional<QuicIPAddress>& migrationAddress);
+  void handlePoolOfAddressesImminentServerMigration(
+      const folly::Optional<QuicIPAddress>& migrationAddress);
 
  private:
   RoutingCallback* routingCb_{nullptr};

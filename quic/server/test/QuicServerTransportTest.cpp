@@ -1945,6 +1945,118 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicit) {
       ServerMigrationFrame(migrationAddress));
 }
 
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesErrors) {
+  MockServerMigrationEventCallback callback;
+
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(5))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::EMPTY_POOL_MIGRATION_ADDRESSES);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(
+            error,
+            ServerMigrationError::POOL_MIGRATION_ADDRESSES_NOT_ACKNOWLEDGED);
+      });
+
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::POOL_OF_ADDRESSES}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::POOL_OF_ADDRESSES}));
+
+  // Test with migration address passed as parameter.
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES,
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  // Test with no protocol state present.
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+
+  // Test with protocol state different from the expected one.
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+
+  // Test with correct protocol state, but empty address pool.
+  server->getNonConstConn().serverMigrationState.protocolState =
+      PoolOfAddressesServerState();
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+
+  // Test with migration pool not entirely acknowledged.
+  auto protocolState = PoolOfAddressesServerState();
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000), false);
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001), true);
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.3"), 5002), false);
+  protocolState.numberOfReceivedAcks = 1;
+  server->getNonConstConn().serverMigrationState.protocolState =
+      std::move(protocolState);
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddresses) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  EXPECT_CALL(callback, onServerMigrationReady).Times(Exactly(1));
+  server->setServerMigrationEventCallback(&callback);
+
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::POOL_OF_ADDRESSES}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::POOL_OF_ADDRESSES}));
+
+  auto protocolState = PoolOfAddressesServerState();
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000), true);
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001), true);
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.3"), 5002), true);
+  protocolState.numberOfReceivedAcks = 3;
+  server->getNonConstConn().serverMigrationState.protocolState = protocolState;
+
+  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+
+  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_EQ(
+      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState);
+  EXPECT_EQ(
+      *server->getNonConstConn()
+           .serverMigrationState.protocolState->asPoolOfAddressesServerState(),
+      protocolState);
+  EXPECT_TRUE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {

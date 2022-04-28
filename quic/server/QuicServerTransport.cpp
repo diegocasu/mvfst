@@ -237,6 +237,7 @@ void QuicServerTransport::onImminentServerMigration(
       handleExplicitImminentServerMigration(migrationAddress);
       return;
     case ServerMigrationProtocol::POOL_OF_ADDRESSES:
+      handlePoolOfAddressesImminentServerMigration(migrationAddress);
       return;
     case ServerMigrationProtocol::SYMMETRIC:
       return;
@@ -280,6 +281,61 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
   serverConn_->serverMigrationState.migrationInProgress = true;
   sendServerMigrationFrame(
       *serverConn_, ServerMigrationFrame(migrationAddress.value()));
+}
+
+void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverConnectionId.value(), error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+
+  if (migrationAddress) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_ADDRESS,
+        "Invalid address for the Pool of Addresses protocol");
+    return;
+  }
+  if (!serverConn_->serverMigrationState.protocolState ||
+      serverConn_->serverMigrationState.protocolState->type() !=
+          QuicServerMigrationProtocolServerState::Type::
+              PoolOfAddressesServerState) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_STATE,
+        "Invalid state for the Pool of Addresses protocol");
+    return;
+  }
+
+  auto protocolState = serverConn_->serverMigrationState.protocolState
+                           ->asPoolOfAddressesServerState();
+  if (protocolState->migrationAddresses.empty()) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::EMPTY_POOL_MIGRATION_ADDRESSES,
+        "Empty address pool for the Pool of Addresses protocol");
+    return;
+  }
+  if (protocolState->migrationAddresses.size() !=
+      protocolState->numberOfReceivedAcks) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::POOL_MIGRATION_ADDRESSES_NOT_ACKNOWLEDGED,
+        "Address pool not acknowledged for the Pool of Addresses protocol");
+    return;
+  }
+
+  serverConn_->serverMigrationState.migrationInProgress = true;
+  if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+    serverConn_->serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationReady(serverConn_->serverConnectionId.value());
+  }
 }
 
 bool QuicServerTransport::setClientStateUpdateCallback(
