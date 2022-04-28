@@ -67,6 +67,21 @@ class QuicServerTransportTest : public QuicServerTransportTestBase {
   void SetUp() override {
     QuicServerTransportTestBase::SetUp();
   }
+
+  void doServerMigrationProtocolNegotiation(
+      const std::unordered_set<ServerMigrationProtocol>&
+          clientSupportedProtocols,
+      const std::unordered_set<ServerMigrationProtocol>&
+          serverSupportedProtocols) {
+    auto clientNegotiator =
+        QuicServerMigrationNegotiatorClient(clientSupportedProtocols);
+    auto serverNegotiator =
+        QuicServerMigrationNegotiatorServer(serverSupportedProtocols);
+    serverNegotiator.onMigrationSuiteReceived(
+        clientNegotiator.onTransportParametersEncoding());
+    server->getNonConstConn().serverMigrationState.negotiator =
+        std::move(serverNegotiator);
+  }
 };
 
 TEST_F(QuicServerTransportTest, TestReadMultipleStreams) {
@@ -1769,6 +1784,75 @@ TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
 
   QuicIPAddress allZeroAddress;
   EXPECT_FALSE(server->addPoolMigrationAddress(allZeroAddress));
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationCommonErrors) {
+  MockServerMigrationEventCallback callback;
+
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(6))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::PROTOCOL_NOT_NEGOTIATED);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_ALREADY_IN_PROGRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::HANDSHAKE_NOT_FINISHED);
+      });
+
+  server->setServerMigrationEventCallback(&callback);
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+
+  // Test with migration disabled.
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  // Enable server migration for the next tests.
+  server->allowServerMigration(supportedProtocols);
+
+  // Test with no migration negotiation performed
+  // (simulates client not supporting server migration).
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  // Test with unsuccessful negotiation (empty negotiated protocols).
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      supportedProtocols);
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  // Test with protocol not in negotiated ones.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::SYMMETRIC}),
+      supportedProtocols);
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT, folly::none);
+
+  // Test with migration in progress (note that Symmetric has been negotiated).
+  server->getNonConstConn().serverMigrationState.migrationInProgress = true;
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  // Test with handshake not finished.
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
 }
 
 class QuicServerTransportAllowMigrationTest

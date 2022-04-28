@@ -46,6 +46,18 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
       onPoolMigrationAddressAckReceived,
       (ConnectionId serverConnectionId, PoolMigrationAddressFrame frame),
       (noexcept, override));
+
+  MOCK_METHOD(
+      void,
+      onServerMigrationFailed,
+      (ConnectionId serverConnectionId, ServerMigrationError error),
+      (noexcept, override));
+
+  MOCK_METHOD(
+      void,
+      onServerMigrationReady,
+      (ConnectionId serverConnectionId),
+      (noexcept, override));
 };
 
 } // namespace quic

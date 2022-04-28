@@ -185,6 +185,54 @@ bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
   return result.second;
 }
 
+void QuicServerTransport::onImminentServerMigration(
+    const ServerMigrationProtocol& protocol,
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    // The value of the server CID is checked because the lambda could be
+    // called before the handshake has been finished and the CID derived.
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback &&
+        serverConn_->serverConnectionId) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverConnectionId.value(), error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+
+  if (!serverConn_->serverHandshakeLayer->isHandshakeDone()) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::HANDSHAKE_NOT_FINISHED, "Handshake not finished");
+    return;
+  }
+  if (!serverConn_->serverMigrationState.negotiator ||
+      !serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols() ||
+      serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
+          ->empty()) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::MIGRATION_DISABLED, "Server migration disabled");
+    return;
+  }
+  if (!serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
+           ->count(protocol)) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::PROTOCOL_NOT_NEGOTIATED,
+        "Server migration protocol not negotiated");
+    return;
+  }
+  if (serverConn_->serverMigrationState.migrationInProgress) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::MIGRATION_ALREADY_IN_PROGRESS,
+        "A server migration is already in progress");
+    return;
+  }
+}
+
 bool QuicServerTransport::setClientStateUpdateCallback(
     ClientStateUpdateCallback* callback) {
   if (callback == nullptr) {

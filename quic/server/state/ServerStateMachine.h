@@ -122,7 +122,7 @@ struct ExplicitServerState {
 
 // State for both the Symmetric and Synchronized Symmetric protocols.
 struct SymmetricServerState {
-  folly::Optional<bool> migrationAcknowledged{false};
+  folly::Optional<bool> migrationAcknowledged;
 
   bool operator==(const SymmetricServerState& rhs) const {
     return migrationAcknowledged == rhs.migrationAcknowledged;
@@ -157,13 +157,24 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
   ConnectionMigrationState migrationState;
 
   struct ServerMigrationState {
+    // Server migration protocol negotiator.
     folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
-    ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
-    bool notifiedHandshakeDone{false};
-    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+
+    // Protocol state.
     folly::Optional<PoolOfAddressesServerState::Pool>
         pendingPoolMigrationAddresses;
     folly::Optional<QuicServerMigrationProtocolServerState> protocolState;
+
+    // Flag telling whether the transport is currently involved in a
+    // server migration. The flag is reset after a server migration is
+    // completed successfully.
+    bool migrationInProgress{false};
+
+    // Callbacks and flags denoting if a particular
+    // callback has been invoked or not.
+    ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
+    bool notifiedHandshakeDone{false};
+    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
   };
 
   ServerMigrationState serverMigrationState;

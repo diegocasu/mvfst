@@ -91,6 +91,26 @@ class ServerMigrationEventCallback {
   virtual void onPoolMigrationAddressAckReceived(
       ConnectionId /*serverConnectionId*/,
       PoolMigrationAddressFrame /*frame*/) noexcept {};
+
+  /**
+   * Called when the invocation of onImminentServerMigration() on a
+   * transport fails. It should be implemented only on the server side.
+   * @param serverConnectionId  the connection ID of the QuicServerTransport
+   *                            instance.
+   * @param error               the error.
+   */
+  virtual void onServerMigrationFailed(
+      ConnectionId /*serverConnectionId*/,
+      ServerMigrationError /*error*/) noexcept {}
+
+  /**
+   * Called when the invocation of onImminentServerMigration() on a
+   * transport succeeds. It should be implemented only on the server side.
+   * @param serverConnectionId  the connection ID of the QuicServerTransport
+   *                            instance.
+   */
+  virtual void onServerMigrationReady(
+      ConnectionId /*serverConnectionId*/) noexcept {}
 };
 
 } // namespace quic

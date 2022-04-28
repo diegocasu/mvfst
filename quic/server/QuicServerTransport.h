@@ -136,6 +136,33 @@ class QuicServerTransport
   bool addPoolMigrationAddress(QuicIPAddress address);
 
   /**
+   * Notifies the transport that a server migration is imminent. Depending of
+   * the chosen protocol, the transport notifies in turn the connected client
+   * about the migration (e.g. sends a SERVER_MIGRATION frame). This method is
+   * asynchronous, thus the transport is not necessarily ready to be migrated
+   * when it returns: it is up to the caller to wait until the ready state is
+   * reached. If setServerMigrationEventCallback() has been previously
+   * called, the transport itself invokes onServerMigrationReady() to notify
+   * this event; otherwise, the caller can only rely on the guarantees offered
+   * by the specific migration protocol (e.g. if Pool of Addresses or Symmetric
+   * are used, there is no need to communicate with the client, hence the
+   * transport is ready to migrate as soon as this method ends).
+   * If the transport cannot migrate, it closes the connection with the client,
+   * possibly invoking onServerMigrationFailed() with the related error code.
+   * It is an error to call this method before the handshake is completed, or
+   * multiple times in a row before a migration is completed.
+   * @param protocol          the migration protocol. It must be one of the
+   *                          protocols negotiated with the client.
+   * @param migrationAddress  the migration address to send to the client. It
+   *                          must be set to folly::none if the given protocol
+   *                          does not need a migration address in this phase,
+   *                          like it happens with the Symmetric protocol.
+   */
+  void onImminentServerMigration(
+      const ServerMigrationProtocol& protocol,
+      const folly::Optional<QuicIPAddress>& migrationAddress);
+
+  /**
    * Sets the callback to invoke when the server migration management
    * interface should be informed about the change of a client's state.
    * @param callback  the callback.
