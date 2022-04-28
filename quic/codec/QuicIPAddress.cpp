@@ -43,8 +43,8 @@ QuicIPAddress::QuicIPAddress(
       ipv6Port(ipv6Port) {}
 
 bool QuicIPAddress::isAllZero() const {
-  return ipv4Address == folly::IPAddressV4("0.0.0.0") && ipv4Port == 0 &&
-      ipv6Address == folly::IPAddressV6("::") && ipv6Port == 0;
+  return ipv4Address.isZero() && ipv4Port == 0 && ipv6Address.isZero() &&
+      ipv6Port == 0;
 }
 
 bool QuicIPAddress::operator==(const QuicIPAddress& rhs) const {
