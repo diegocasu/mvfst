@@ -10,6 +10,11 @@ struct QuicIPAddress {
   uint16_t ipv6Port{0};
 
   /**
+   * Creates an all-zero Quic IP address.
+   */
+  explicit QuicIPAddress() = default;
+
+  /**
    * Creates a Quic IP address specifying a single address and port of a
    * chosen family, either IPv4 or IPv6; the other address and port are set
    * using an all-zero representation. The address family is automatically

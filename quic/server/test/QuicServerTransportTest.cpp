@@ -1767,7 +1767,7 @@ TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
   EXPECT_TRUE(server->addPoolMigrationAddress(address));
   EXPECT_FALSE(server->addPoolMigrationAddress(address));
 
-  QuicIPAddress allZeroAddress(folly::IPAddressV4("0.0.0.0"), 0);
+  QuicIPAddress allZeroAddress;
   EXPECT_FALSE(server->addPoolMigrationAddress(allZeroAddress));
 }
 

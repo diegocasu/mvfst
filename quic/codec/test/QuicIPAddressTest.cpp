@@ -74,7 +74,7 @@ TEST_F(QuicIPAddressTest, TestAllZeroRepresentation) {
   notAllZero = QuicIPAddress(ipv4SocketAddress);
   EXPECT_FALSE(notAllZero.isAllZero());
 
-  QuicIPAddress allZero(folly::IPAddressV4("0.0.0.0"), 0);
+  QuicIPAddress allZero;
   EXPECT_TRUE(allZero.isAllZero());
 }
 
