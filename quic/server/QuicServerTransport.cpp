@@ -231,6 +231,55 @@ void QuicServerTransport::onImminentServerMigration(
         "A server migration is already in progress");
     return;
   }
+
+  switch (protocol) {
+    case ServerMigrationProtocol::EXPLICIT:
+      handleExplicitImminentServerMigration(migrationAddress);
+      return;
+    case ServerMigrationProtocol::POOL_OF_ADDRESSES:
+      return;
+    case ServerMigrationProtocol::SYMMETRIC:
+      return;
+    case ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC:
+      return;
+  }
+  folly::assume_unreachable();
+}
+
+void QuicServerTransport::handleExplicitImminentServerMigration(
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverConnectionId.value(), error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+
+  if (!migrationAddress || migrationAddress->isAllZero()) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_ADDRESS,
+        "Invalid address for the Explicit protocol");
+    return;
+  }
+  if (serverConn_->serverMigrationState.protocolState) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_STATE,
+        "Invalid state for the Explicit protocol");
+    return;
+  }
+
+  serverConn_->serverMigrationState.protocolState =
+      ExplicitServerState(migrationAddress.value());
+  serverConn_->serverMigrationState.migrationInProgress = true;
+  sendServerMigrationFrame(
+      *serverConn_, ServerMigrationFrame(migrationAddress.value()));
 }
 
 bool QuicServerTransport::setClientStateUpdateCallback(

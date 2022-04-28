@@ -256,6 +256,9 @@ class QuicServerTransport
   void registerAllTransportKnobParamHandlers();
   void maybeSendPoolMigrationAddresses();
 
+  void handleExplicitImminentServerMigration(
+      const folly::Optional<QuicIPAddress>& migrationAddress);
+
  private:
   RoutingCallback* routingCb_{nullptr};
   HandshakeFinishedCallback* handshakeFinishedCb_{nullptr};

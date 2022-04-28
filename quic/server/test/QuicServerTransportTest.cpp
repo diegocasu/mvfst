@@ -1855,6 +1855,96 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationCommonErrors) {
       ServerMigrationProtocol::SYMMETRIC, folly::none);
 }
 
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitErrors) {
+  MockServerMigrationEventCallback callback;
+
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(4))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
+  // Test with missing or all-zero migration address.
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT, folly::none);
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT, QuicIPAddress());
+
+  // Test with invalid state (same protocol and different protocol).
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5001));
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT,
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT,
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicit) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(&callback);
+
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT, migrationAddress);
+
+  EXPECT_TRUE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_EQ(
+      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::ExplicitServerState);
+
+  auto protocolState =
+      server->getNonConstConn()
+          .serverMigrationState.protocolState->asExplicitServerState();
+  EXPECT_EQ(protocolState->migrationAddress, migrationAddress);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+
+  ASSERT_FALSE(server->getNonConstConn().pendingEvents.frames.empty());
+  EXPECT_EQ(
+      *server->getNonConstConn()
+           .pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigrationFrame(),
+      ServerMigrationFrame(migrationAddress));
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {
