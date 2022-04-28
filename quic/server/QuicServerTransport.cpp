@@ -243,6 +243,7 @@ void QuicServerTransport::onImminentServerMigration(
       handleSymmetricImminentServerMigration(migrationAddress);
       return;
     case ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC:
+      handleSynchronizedSymmetricImminentServerMigration(migrationAddress);
       return;
   }
   folly::assume_unreachable();
@@ -374,6 +375,42 @@ void QuicServerTransport::handleSymmetricImminentServerMigration(
     serverConn_->serverMigrationState.serverMigrationEventCallback
         ->onServerMigrationReady(serverConn_->serverConnectionId.value());
   }
+}
+
+void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverConnectionId.value(), error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+
+  if (migrationAddress) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_ADDRESS,
+        "Invalid address for the Synchronized Symmetric protocol");
+    return;
+  }
+  if (serverConn_->serverMigrationState.protocolState) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_STATE,
+        "Invalid state for the Synchronized Symmetric protocol");
+    return;
+  }
+
+  auto protocolState = SymmetricServerState();
+  protocolState.migrationAcknowledged = false;
+  serverConn_->serverMigrationState.protocolState = std::move(protocolState);
+  serverConn_->serverMigrationState.migrationInProgress = true;
+  sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(QuicIPAddress()));
 }
 
 bool QuicServerTransport::setClientStateUpdateCallback(
