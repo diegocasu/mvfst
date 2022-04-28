@@ -240,6 +240,7 @@ void QuicServerTransport::onImminentServerMigration(
       handlePoolOfAddressesImminentServerMigration(migrationAddress);
       return;
     case ServerMigrationProtocol::SYMMETRIC:
+      handleSymmetricImminentServerMigration(migrationAddress);
       return;
     case ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC:
       return;
@@ -331,6 +332,43 @@ void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
     return;
   }
 
+  serverConn_->serverMigrationState.migrationInProgress = true;
+  if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+    serverConn_->serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationReady(serverConn_->serverConnectionId.value());
+  }
+}
+
+void QuicServerTransport::handleSymmetricImminentServerMigration(
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverConnectionId.value(), error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+
+  if (migrationAddress) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_ADDRESS,
+        "Invalid address for the Symmetric protocol");
+    return;
+  }
+  if (serverConn_->serverMigrationState.protocolState) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_STATE,
+        "Invalid state for the Symmetric protocol");
+    return;
+  }
+
+  serverConn_->serverMigrationState.protocolState = SymmetricServerState();
   serverConn_->serverMigrationState.migrationInProgress = true;
   if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
     serverConn_->serverMigrationState.serverMigrationEventCallback

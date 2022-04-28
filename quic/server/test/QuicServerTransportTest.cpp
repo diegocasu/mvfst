@@ -2057,6 +2057,80 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddresses) {
   EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
 }
 
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetricErrors) {
+  MockServerMigrationEventCallback callback;
+
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(3))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::SYMMETRIC}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::SYMMETRIC}));
+
+  // Test with migration address passed as parameter.
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC,
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  // Test invalid state (same protocol and different protocol).
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  server->getNonConstConn().serverMigrationState.protocolState =
+      PoolOfAddressesServerState();
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetric) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  EXPECT_CALL(callback, onServerMigrationReady).Times(Exactly(1));
+  server->setServerMigrationEventCallback(&callback);
+
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::SYMMETRIC}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::SYMMETRIC}));
+
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_EQ(
+      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
+  EXPECT_TRUE(!server->getNonConstConn()
+                   .serverMigrationState.protocolState->asSymmetricServerState()
+                   ->migrationAcknowledged);
+  EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(
+      server->getNonConstConn().serverMigrationState.migrationInProgress);
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {
