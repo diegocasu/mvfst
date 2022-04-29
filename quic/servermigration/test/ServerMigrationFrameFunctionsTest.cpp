@@ -89,10 +89,22 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedSendServerMigrationF
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           serverState, poolMigrationAddressFrame),
+      QuicTransportException);
+
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, serverMigrationFrame),
+      QuicTransportException);
+
+  ServerMigratedFrame serverMigratedFrame;
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, serverMigratedFrame),
       QuicTransportException);
 }
 

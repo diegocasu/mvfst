@@ -172,9 +172,17 @@ void updateServerMigrationFrameOnPacketReceived(
     QuicServerConnectionState& /*connectionState*/,
     const QuicServerMigrationFrame& frame) {
   switch (frame.type()) {
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame:
+      throw QuicTransportException(
+          "Server received a SERVER_MIGRATION frame",
+          TransportErrorCode::PROTOCOL_VIOLATION);
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throw QuicTransportException(
           "Server received a POOL_MIGRATION_ADDRESS frame",
+          TransportErrorCode::PROTOCOL_VIOLATION);
+    case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      throw QuicTransportException(
+          "Server received a SERVER_MIGRATED frame",
           TransportErrorCode::PROTOCOL_VIOLATION);
   }
   folly::assume_unreachable();
