@@ -1780,10 +1780,16 @@ TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
   server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
   server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
   EXPECT_TRUE(server->addPoolMigrationAddress(address));
+
+  // Test insertion of a duplicate address.
   EXPECT_FALSE(server->addPoolMigrationAddress(address));
 
   QuicIPAddress allZeroAddress;
   EXPECT_FALSE(server->addPoolMigrationAddress(allZeroAddress));
+
+  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
+  QuicIPAddress withoutIPv4Address(folly::IPAddressV6("::1"), 1234);
+  EXPECT_FALSE(server->addPoolMigrationAddress(withoutIPv4Address));
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationCommonErrors) {
@@ -1855,24 +1861,13 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationCommonErrors) {
       ServerMigrationProtocol::SYMMETRIC, folly::none);
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitErrors) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitNoMigrationAddress) {
   MockServerMigrationEventCallback callback;
-
   EXPECT_CALL(callback, onServerMigrationFailed)
-      .Times(Exactly(4))
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
-
   server->setServerMigrationEventCallback(&callback);
 
   // Simulate successful negotiation.
@@ -1882,20 +1877,73 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitErrors) {
       std::unordered_set<ServerMigrationProtocol>(
           {ServerMigrationProtocol::EXPLICIT}));
 
-  // Test with missing or all-zero migration address.
   server->onImminentServerMigration(
       ServerMigrationProtocol::EXPLICIT, folly::none);
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT, QuicIPAddress());
+}
 
-  // Test with invalid state (same protocol and different protocol).
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitAddressFamilyMismatch) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      });
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
+  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT,
+      QuicIPAddress(folly::IPAddressV6("::1"), 5000));
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateSameProtocol) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
   ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
   server->getNonConstConn().serverMigrationState.protocolState =
       ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5001));
   server->onImminentServerMigration(
       ServerMigrationProtocol::EXPLICIT,
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+}
 
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateDifferentProtocol) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
+  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
   server->getNonConstConn().serverMigrationState.protocolState =
       SymmetricServerState();
   server->onImminentServerMigration(

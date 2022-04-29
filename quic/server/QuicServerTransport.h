@@ -130,10 +130,12 @@ class QuicServerTransport
    * usable protocols and this method has been called, the transport ignores
    * the PoA pool.
    * @param address  the Quic IP address to add to the PoA pool.
+   *                 It must contain at least an address of the same family
+   *                 of the one used in the transport.
    * @return         true if the address has been added to the PoA pool,
    *                 false otherwise.
    */
-  bool addPoolMigrationAddress(QuicIPAddress address);
+  bool addPoolMigrationAddress(const QuicIPAddress& address);
 
   /**
    * Notifies the transport that a server migration is imminent. Depending of

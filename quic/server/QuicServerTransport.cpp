@@ -150,7 +150,8 @@ bool QuicServerTransport::allowServerMigration(
   return true;
 }
 
-bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
+bool QuicServerTransport::addPoolMigrationAddress(
+    const QuicIPAddress& address) {
   if (!serverConn_->serverMigrationState.negotiator) {
     LOG(ERROR) << "Server migration is not enabled";
     return false;
@@ -164,6 +165,14 @@ bool QuicServerTransport::addPoolMigrationAddress(QuicIPAddress address) {
   if (address.isAllZero()) {
     LOG(ERROR)
         << "All-zero addresses are not allowed in the Pool of Addresses protocol";
+    return false;
+  }
+  if (socket_->address().getIPAddress().isV4() && !address.hasIPv4Field()) {
+    LOG(ERROR) << "The transport needs a non-zero IPv4 address and port";
+    return false;
+  }
+  if (socket_->address().getIPAddress().isV6() && !address.hasIPv6Field()) {
+    LOG(ERROR) << "The transport needs a non-zero IPv6 address and port";
     return false;
   }
   if (serverConn_->serverHandshakeLayer->isHandshakeDone()) {
@@ -265,7 +274,11 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
         false);
   };
 
-  if (!migrationAddress || migrationAddress->isAllZero()) {
+  if (!migrationAddress ||
+      (socket_->address().getIPAddress().isV4() &&
+       !migrationAddress->hasIPv4Field()) ||
+      (socket_->address().getIPAddress().isV6() &&
+       !migrationAddress->hasIPv6Field())) {
     invokeFailureCallbackAndClose(
         ServerMigrationError::INVALID_ADDRESS,
         "Invalid address for the Explicit protocol");
