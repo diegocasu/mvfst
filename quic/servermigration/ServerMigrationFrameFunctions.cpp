@@ -317,7 +317,7 @@ void updateServerMigrationFrameOnPacketLoss(
     QuicConnectionStateBase& connectionState,
     const QuicServerMigrationFrame& frame) {
   // Retransmit frame.
-  connectionState.pendingEvents.frames.emplace_back(std::move(frame));
+  connectionState.pendingEvents.frames.push_back(frame);
 }
 
 } // namespace quic
