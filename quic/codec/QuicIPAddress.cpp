@@ -47,6 +47,14 @@ bool QuicIPAddress::isAllZero() const {
       ipv6Port == 0;
 }
 
+bool QuicIPAddress::hasIPv4Field() const {
+  return !ipv4Address.isZero() && ipv4Port != 0;
+}
+
+bool QuicIPAddress::hasIPv6Field() const {
+  return !ipv6Address.isZero() && ipv6Port != 0;
+}
+
 bool QuicIPAddress::operator==(const QuicIPAddress& rhs) const {
   return ipv4Address == rhs.ipv4Address && ipv4Port == rhs.ipv4Port &&
       ipv6Address == rhs.ipv6Address && ipv6Port == rhs.ipv6Port;

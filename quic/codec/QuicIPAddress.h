@@ -46,6 +46,22 @@ struct QuicIPAddress {
   bool operator==(const QuicIPAddress& rhs) const;
   bool operator!=(const QuicIPAddress& rhs) const;
   bool isAllZero() const;
+
+  /**
+   * Checks if the Quic IP address carries a non-zero IPv4 address and port.
+   * The result is not influenced by the value of the IPv6 address and port.
+   * @return  true if the Quic IP address carries a non-zero IPv4 address
+   *          and port, false otherwise.
+   */
+  bool hasIPv4Field() const;
+
+  /**
+   * Checks if the Quic IP address carries a non-zero IPv6 address and port.
+   * The result is not influenced by the value of the IPv4 address and port.
+   * @return  true if the Quic IP address carries a non-zero IPv6 address
+   *          and port, false otherwise.
+   */
+  bool hasIPv6Field() const;
 };
 
 struct QuicIPAddressHash {

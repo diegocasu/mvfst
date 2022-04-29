@@ -76,5 +76,27 @@ TEST_F(QuicIPAddressTest, TestAllZeroRepresentation) {
   EXPECT_TRUE(allZero.isAllZero());
 }
 
+TEST_F(QuicIPAddressTest, TestHasIPv4Field) {
+  QuicIPAddress allZero;
+  EXPECT_FALSE(allZero.hasIPv4Field());
+
+  QuicIPAddress hasIPv4(ipv4SocketAddress);
+  EXPECT_TRUE(hasIPv4.hasIPv4Field());
+
+  QuicIPAddress hasBoth(ipv4SocketAddress, ipv6SocketAddress);
+  EXPECT_TRUE(hasBoth.hasIPv4Field());
+}
+
+TEST_F(QuicIPAddressTest, TestHasIPv6Field) {
+  QuicIPAddress allZero;
+  EXPECT_FALSE(allZero.hasIPv6Field());
+
+  QuicIPAddress hasIPv6(ipv6SocketAddress);
+  EXPECT_TRUE(hasIPv6.hasIPv6Field());
+
+  QuicIPAddress hasBoth(ipv4SocketAddress, ipv6SocketAddress);
+  EXPECT_TRUE(hasBoth.hasIPv6Field());
+}
+
 } // namespace test
 } // namespace quic
