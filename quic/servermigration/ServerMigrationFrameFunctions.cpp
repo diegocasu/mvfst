@@ -138,6 +138,15 @@ void throwIfProtocolStateNotMatching(
   auto protocolStateType =
       connectionState.serverMigrationState.protocolState->type();
   switch ((frame.type())) {
+    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame:
+      if (protocolStateType !=
+              quic::QuicServerMigrationProtocolServerState::Type::
+                  ExplicitServerState &&
+          protocolStateType !=
+              quic::QuicServerMigrationProtocolServerState::Type::
+                  SymmetricServerState) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
     case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       if (protocolStateType !=
           quic::QuicServerMigrationProtocolServerState::Type::
@@ -145,6 +154,12 @@ void throwIfProtocolStateNotMatching(
         throw quic::QuicTransportException(errorMsg, errorCode);
       }
       return;
+    case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      if (protocolStateType !=
+          quic::QuicServerMigrationProtocolServerState::Type::
+              SymmetricServerState) {
+        throw quic::QuicTransportException(errorMsg, errorCode);
+      }
   }
   folly::assume_unreachable();
 }
