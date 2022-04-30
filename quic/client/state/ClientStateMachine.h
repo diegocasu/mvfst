@@ -80,9 +80,14 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
   ClientHandshake* clientHandshakeLayer;
 
   struct ServerMigrationState {
+    // Server migration protocol negotiator.
     folly::Optional<QuicServerMigrationNegotiatorClient> negotiator;
-    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+
+    // Protocol state.
     folly::Optional<QuicServerMigrationProtocolClientState> protocolState;
+
+    // Callbacks.
+    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
   };
 
   ServerMigrationState serverMigrationState;
