@@ -20,6 +20,8 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
 
   void SetUp() override {
     serverState.serverConnectionId = ConnectionId::createRandom(8);
+    clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
+    serverState.peerAddress = folly::SocketAddress("5.6.7.8", 5678);
   }
 
   void enableServerMigrationServerSide() {
@@ -166,8 +168,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoolMigrationAddress) {
-  PoolMigrationAddressFrame poolMigrationAddressFrame(
+  PoolMigrationAddressFrame poolMigrationAddressFrameV4(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PoolMigrationAddressFrame poolMigrationAddressFrameV6(
+      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
 
   MockServerMigrationEventCallback callback;
   EXPECT_CALL(callback, onPoolMigrationAddressReceived).Times(0);
@@ -176,7 +180,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   // Test with server migration disabled.
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrame),
+          clientState, poolMigrationAddressFrameV4),
       QuicTransportException);
 
   // Test with frame type belonging to a not negotiated protocol.
@@ -187,12 +191,33 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   doNegotiation();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrame),
+          clientState, poolMigrationAddressFrameV4),
       QuicTransportException);
+
+  // Simulate successful negotiation.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
 
   // TODO add test with protocol state not matching frame type, so where
   // clientState.serverMigrationState.protocolState !=
   // QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState
+
+  // Test with a frame carrying an address of a different family wrt
+  // the one used in the transport socket.
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrameV6),
+      QuicTransportException);
+
+  clientState.peerAddress = folly::SocketAddress("::1", 1234);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrameV4),
+      QuicTransportException);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolMigrationAddressAck) {

@@ -225,6 +225,19 @@ void updateServerMigrationFrameOnPacketReceived(
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
 
+      // The information given by the peer address guarantees to identify
+      // the correct address family used by the socket stored in the client
+      // transport (if Happy Eyeballs is enabled, at this point of the
+      // execution it must have finished).
+      if ((connectionState.peerAddress.getIPAddress().isV4() &&
+           !poolMigrationAddressFrame.address.hasIPv4Field()) ||
+          (connectionState.peerAddress.getIPAddress().isV6() &&
+           !poolMigrationAddressFrame.address.hasIPv6Field())) {
+        throw QuicTransportException(
+            "Client received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
+            TransportErrorCode::PROTOCOL_VIOLATION);
+      }
+
       if (connectionState.serverMigrationState.serverMigrationEventCallback) {
         connectionState.serverMigrationState.serverMigrationEventCallback
             ->onPoolMigrationAddressReceived(poolMigrationAddressFrame);
