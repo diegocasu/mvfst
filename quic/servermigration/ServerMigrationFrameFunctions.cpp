@@ -169,6 +169,14 @@ void handleClientReceptionOfPoolMigrationAddress(
     const quic::QuicServerMigrationFrame& frame) {
   auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
 
+  // Do not process duplicates.
+  if (connectionState.serverMigrationState.protocolState &&
+      connectionState.serverMigrationState.protocolState
+          ->asPoolOfAddressesClientState()
+          ->migrationAddresses.count(poolMigrationAddressFrame.address)) {
+    return;
+  }
+
   // The pool cannot change during a migration or after at least one migration
   // has been completed successfully. Moreover, it is up to the server to wait
   // for all the addresses to be acknowledged before attempting a migration.

@@ -74,6 +74,8 @@ class ServerMigrationEventCallback {
 
   /**
    * Called when a POOL_MIGRATION_ADDRESS frame is received.
+   * It is not called if the frame is a duplicate, or
+   * causes a protocol violation.
    * It should be implemented only on the client side.
    * @param frame  the received POOL_MIGRATION_ADDRESS frame.
    */
