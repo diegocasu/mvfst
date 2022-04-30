@@ -218,6 +218,23 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
       updateServerMigrationFrameOnPacketReceived(
           clientState, poolMigrationAddressFrameV4),
       QuicTransportException);
+
+  // Test with a migration in progress.
+  clientState.serverMigrationState.migrationInProgress = true;
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrameV4),
+      QuicTransportException);
+
+  // Test with at least one migration completed.
+  clientState.serverMigrationState.migrationInProgress = false;
+  clientState.serverMigrationState.numberOfMigrations = 1;
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrameV4),
+      QuicTransportException);
+  clientState.serverMigrationState.numberOfMigrations = 0;
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolMigrationAddressAck) {

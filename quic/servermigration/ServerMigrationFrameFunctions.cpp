@@ -169,6 +169,16 @@ void handleClientReceptionOfPoolMigrationAddress(
     const quic::QuicServerMigrationFrame& frame) {
   auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
 
+  // The pool cannot change during a migration or after at least one migration
+  // has been completed successfully. Moreover, it is up to the server to wait
+  // for all the addresses to be acknowledged before attempting a migration.
+  if (connectionState.serverMigrationState.migrationInProgress ||
+      connectionState.serverMigrationState.numberOfMigrations > 0) {
+    throw quic::QuicTransportException(
+        "Client cannot receive a POOL_MIGRATION_ADDRESS frame during or after a migration",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+
   // The information given by the peer address guarantees to identify
   // the correct address family used by the socket stored in the client
   // transport (if Happy Eyeballs is enabled, at this point of the

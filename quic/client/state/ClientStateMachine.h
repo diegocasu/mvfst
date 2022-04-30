@@ -86,6 +86,14 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
     // Protocol state.
     folly::Optional<QuicServerMigrationProtocolClientState> protocolState;
 
+    // Flag telling whether the transport is currently involved in a
+    // server migration. The flag is reset after a server migration is
+    // completed successfully.
+    bool migrationInProgress{false};
+
+    // Counter keeping track of the number of successful server migrations.
+    unsigned int numberOfMigrations{0};
+
     // Callbacks.
     ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
   };
