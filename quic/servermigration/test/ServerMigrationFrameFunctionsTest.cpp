@@ -260,7 +260,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolM
 
   MockServerMigrationEventCallback callback;
   EXPECT_CALL(callback, onPoolMigrationAddressAckReceived)
-      .Times(Exactly(2))
+      .Times(Exactly(1))
       .WillRepeatedly([&](Unused, PoolMigrationAddressFrame frame) {
         EXPECT_TRUE(frame == poolMigrationAddressFrame);
       });

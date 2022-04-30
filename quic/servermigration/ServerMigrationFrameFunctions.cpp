@@ -221,18 +221,11 @@ void handleServerReceptionOfPoolMigrationAddressAck(
     quic::QuicServerConnectionState& connectionState,
     const quic::QuicServerMigrationFrame& frame) {
   auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
-
-  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
-    connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onPoolMigrationAddressAckReceived(
-            connectionState.serverConnectionId.value(),
-            poolMigrationAddressFrame);
-  }
-
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asPoolOfAddressesServerState();
   auto it =
       protocolState->migrationAddresses.find(poolMigrationAddressFrame.address);
+
   if (it == protocolState->migrationAddresses.end()) {
     throw quic::QuicTransportException(
         "Server received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
@@ -242,6 +235,12 @@ void handleServerReceptionOfPoolMigrationAddressAck(
     // The migration address has got an acknowledgement for the first time.
     it->second = true;
     protocolState->numberOfReceivedAcks += 1;
+    if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onPoolMigrationAddressAckReceived(
+              connectionState.serverConnectionId.value(),
+              poolMigrationAddressFrame);
+    }
     return;
   }
   // Duplicate acknowledgements are ignored.

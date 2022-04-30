@@ -85,6 +85,7 @@ class ServerMigrationEventCallback {
   /**
    * Called when an acknowledgement for a previously sent
    * POOL_MIGRATION_ADDRESS frame is received.
+   * It is not called if the acknowledgement is a duplicate.
    * It should be implemented only on the server side.
    * @param serverConnectionId  the connection ID of the QuicServerTransport
    *                            instance managing the connection.
