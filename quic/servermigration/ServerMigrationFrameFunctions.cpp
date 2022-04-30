@@ -164,6 +164,71 @@ void throwIfProtocolStateNotMatching(
   folly::assume_unreachable();
 }
 
+void handleClientReceptionOfPoolMigrationAddress(
+    quic::QuicClientConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame) {
+  auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
+
+  // The information given by the peer address guarantees to identify
+  // the correct address family used by the socket stored in the client
+  // transport (if Happy Eyeballs is enabled, at this point of the
+  // execution it must have finished).
+  if ((connectionState.peerAddress.getIPAddress().isV4() &&
+       !poolMigrationAddressFrame.address.hasIPv4Field()) ||
+      (connectionState.peerAddress.getIPAddress().isV6() &&
+       !poolMigrationAddressFrame.address.hasIPv6Field())) {
+    throw quic::QuicTransportException(
+        "Client received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onPoolMigrationAddressReceived(poolMigrationAddressFrame);
+  }
+
+  if (connectionState.serverMigrationState.protocolState) {
+    connectionState.serverMigrationState.protocolState
+        ->asPoolOfAddressesClientState()
+        ->migrationAddresses.insert(poolMigrationAddressFrame.address);
+    return;
+  }
+
+  quic::PoolOfAddressesClientState protocolState;
+  protocolState.migrationAddresses.insert(poolMigrationAddressFrame.address);
+  connectionState.serverMigrationState.protocolState = std::move(protocolState);
+}
+
+void handleServerReceptionOfPoolMigrationAddressAck(
+    quic::QuicServerConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame) {
+  auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
+
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onPoolMigrationAddressAckReceived(
+            connectionState.serverConnectionId.value(),
+            poolMigrationAddressFrame);
+  }
+
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesServerState();
+  auto it =
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address);
+  if (it == protocolState->migrationAddresses.end()) {
+    throw quic::QuicTransportException(
+        "Server received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+  if (!it->second) {
+    // The migration address has got an acknowledgement for the first time.
+    it->second = true;
+    protocolState->numberOfReceivedAcks += 1;
+    return;
+  }
+  // Duplicate acknowledgements are ignored.
+}
+
 } // namespace
 
 namespace quic {
@@ -223,38 +288,7 @@ void updateServerMigrationFrameOnPacketReceived(
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
-
-      // The information given by the peer address guarantees to identify
-      // the correct address family used by the socket stored in the client
-      // transport (if Happy Eyeballs is enabled, at this point of the
-      // execution it must have finished).
-      if ((connectionState.peerAddress.getIPAddress().isV4() &&
-           !poolMigrationAddressFrame.address.hasIPv4Field()) ||
-          (connectionState.peerAddress.getIPAddress().isV6() &&
-           !poolMigrationAddressFrame.address.hasIPv6Field())) {
-        throw QuicTransportException(
-            "Client received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
-            TransportErrorCode::PROTOCOL_VIOLATION);
-      }
-
-      if (connectionState.serverMigrationState.serverMigrationEventCallback) {
-        connectionState.serverMigrationState.serverMigrationEventCallback
-            ->onPoolMigrationAddressReceived(poolMigrationAddressFrame);
-      }
-
-      if (connectionState.serverMigrationState.protocolState) {
-        connectionState.serverMigrationState.protocolState
-            ->asPoolOfAddressesClientState()
-            ->migrationAddresses.insert(poolMigrationAddressFrame.address);
-        return;
-      }
-
-      PoolOfAddressesClientState protocolState;
-      protocolState.migrationAddresses.insert(
-          poolMigrationAddressFrame.address);
-      connectionState.serverMigrationState.protocolState =
-          std::move(protocolState);
+      handleClientReceptionOfPoolMigrationAddress(connectionState, frame);
       return;
   }
   folly::assume_unreachable();
@@ -280,31 +314,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
-
-      if (connectionState.serverMigrationState.serverMigrationEventCallback) {
-        connectionState.serverMigrationState.serverMigrationEventCallback
-            ->onPoolMigrationAddressAckReceived(
-                connectionState.serverConnectionId.value(),
-                poolMigrationAddressFrame);
-      }
-
-      auto protocolState = connectionState.serverMigrationState.protocolState
-                               ->asPoolOfAddressesServerState();
-      auto it = protocolState->migrationAddresses.find(
-          poolMigrationAddressFrame.address);
-      if (it == protocolState->migrationAddresses.end()) {
-        throw QuicTransportException(
-            "Server received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
-            TransportErrorCode::INTERNAL_ERROR);
-      }
-      if (!it->second) {
-        // The migration address has got an acknowledgement for the first time.
-        it->second = true;
-        protocolState->numberOfReceivedAcks += 1;
-        return;
-      }
-      // Duplicate acknowledgements are ignored.
+      handleServerReceptionOfPoolMigrationAddressAck(connectionState, frame);
       return;
   }
   folly::assume_unreachable();
