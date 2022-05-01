@@ -187,14 +187,12 @@ void throwIfProtocolStateNotMatching(
 
 void handleClientReceptionOfPoolMigrationAddress(
     quic::QuicClientConnectionState& connectionState,
-    const quic::QuicServerMigrationFrame& frame) {
-  auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
-
+    const quic::PoolMigrationAddressFrame& frame) {
   // Do not process duplicates.
   if (connectionState.serverMigrationState.protocolState &&
       connectionState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->migrationAddresses.count(poolMigrationAddressFrame.address)) {
+          ->migrationAddresses.count(frame.address)) {
     return;
   }
 
@@ -213,9 +211,9 @@ void handleClientReceptionOfPoolMigrationAddress(
   // transport (if Happy Eyeballs is enabled, at this point of the
   // execution it must have finished).
   if ((connectionState.peerAddress.getIPAddress().isV4() &&
-       !poolMigrationAddressFrame.address.hasIPv4Field()) ||
+       !frame.address.hasIPv4Field()) ||
       (connectionState.peerAddress.getIPAddress().isV6() &&
-       !poolMigrationAddressFrame.address.hasIPv6Field())) {
+       !frame.address.hasIPv6Field())) {
     throw quic::QuicTransportException(
         "Client received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
@@ -223,29 +221,27 @@ void handleClientReceptionOfPoolMigrationAddress(
 
   if (connectionState.serverMigrationState.serverMigrationEventCallback) {
     connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onPoolMigrationAddressReceived(poolMigrationAddressFrame);
+        ->onPoolMigrationAddressReceived(frame);
   }
 
   if (connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState
         ->asPoolOfAddressesClientState()
-        ->migrationAddresses.insert(poolMigrationAddressFrame.address);
+        ->migrationAddresses.insert(frame.address);
     return;
   }
 
   quic::PoolOfAddressesClientState protocolState;
-  protocolState.migrationAddresses.insert(poolMigrationAddressFrame.address);
+  protocolState.migrationAddresses.insert(frame.address);
   connectionState.serverMigrationState.protocolState = std::move(protocolState);
 }
 
 void handleServerReceptionOfPoolMigrationAddressAck(
     quic::QuicServerConnectionState& connectionState,
-    const quic::QuicServerMigrationFrame& frame) {
-  auto& poolMigrationAddressFrame = *frame.asPoolMigrationAddressFrame();
+    const quic::PoolMigrationAddressFrame& frame) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asPoolOfAddressesServerState();
-  auto it =
-      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address);
+  auto it = protocolState->migrationAddresses.find(frame.address);
 
   if (it == protocolState->migrationAddresses.end()) {
     throw quic::QuicTransportException(
@@ -259,8 +255,7 @@ void handleServerReceptionOfPoolMigrationAddressAck(
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onPoolMigrationAddressAckReceived(
-              connectionState.serverConnectionId.value(),
-              poolMigrationAddressFrame);
+              connectionState.serverConnectionId.value(), frame);
     }
     return;
   }
@@ -317,7 +312,8 @@ void updateServerMigrationFrameOnPacketReceived(
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      handleClientReceptionOfPoolMigrationAddress(connectionState, frame);
+      handleClientReceptionOfPoolMigrationAddress(
+          connectionState, *frame.asPoolMigrationAddressFrame());
       return;
   }
   folly::assume_unreachable();
@@ -343,7 +339,8 @@ void updateServerMigrationFrameOnPacketAckReceived(
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      handleServerReceptionOfPoolMigrationAddressAck(connectionState, frame);
+      handleServerReceptionOfPoolMigrationAddressAck(
+          connectionState, *frame.asPoolMigrationAddressFrame());
       return;
   }
   folly::assume_unreachable();
