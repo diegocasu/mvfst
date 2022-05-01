@@ -304,7 +304,7 @@ void handlePoolMigrationAddressFrame(
   if (connectionState.serverMigrationState.migrationInProgress ||
       connectionState.serverMigrationState.numberOfMigrations > 0) {
     throw quic::QuicTransportException(
-        "Client cannot receive a POOL_MIGRATION_ADDRESS frame during or after a migration",
+        "Received a POOL_MIGRATION_ADDRESS frame during or after a migration",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
 
@@ -317,7 +317,7 @@ void handlePoolMigrationAddressFrame(
       (connectionState.peerAddress.getIPAddress().isV6() &&
        !frame.address.hasIPv6Field())) {
     throw quic::QuicTransportException(
-        "Client received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
+        "Received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
 
@@ -347,7 +347,7 @@ void handlePoolMigrationAddressAck(
 
   if (it == protocolState->migrationAddresses.end()) {
     throw quic::QuicTransportException(
-        "Server received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
+        "Received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
         quic::TransportErrorCode::INTERNAL_ERROR);
   }
   if (!it->second) {
@@ -359,9 +359,7 @@ void handlePoolMigrationAddressAck(
           ->onPoolMigrationAddressAckReceived(
               connectionState.serverConnectionId.value(), frame);
     }
-    return;
   }
-  // Duplicate acknowledgements are ignored.
 }
 
 } // namespace
@@ -380,15 +378,15 @@ void updateServerMigrationFrameOnPacketReceived(
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::ServerMigrationFrame:
       throw QuicTransportException(
-          "Server received a SERVER_MIGRATION frame",
+          "Received a SERVER_MIGRATION frame",
           TransportErrorCode::PROTOCOL_VIOLATION);
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throw QuicTransportException(
-          "Server received a POOL_MIGRATION_ADDRESS frame",
+          "Received a POOL_MIGRATION_ADDRESS frame",
           TransportErrorCode::PROTOCOL_VIOLATION);
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throw QuicTransportException(
-          "Server received a SERVER_MIGRATED frame",
+          "Received a SERVER_MIGRATED frame",
           TransportErrorCode::PROTOCOL_VIOLATION);
   }
   folly::assume_unreachable();
