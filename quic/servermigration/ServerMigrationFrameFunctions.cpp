@@ -60,13 +60,18 @@ void throwIfProtocolWasNotNegotiated(
       connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
           .value();
   switch (frame.type()) {
-    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame:
-      if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT) &&
-          !negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
+    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      auto isAllZero = frame.asServerMigrationFrame()->address.isAllZero();
+      if ((!isAllZero &&
+           !negotiatedProtocols.count(
+               quic::ServerMigrationProtocol::EXPLICIT)) ||
+          (isAllZero &&
+           !negotiatedProtocols.count(
+               quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC))) {
         throw quic::QuicTransportException(errorMsg, errorCode);
       }
       return;
+    }
     case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
       if (!negotiatedProtocols.count(
               quic::ServerMigrationProtocol::SYMMETRIC) &&
@@ -138,15 +143,19 @@ void throwIfProtocolStateNotMatching(
   auto protocolStateType =
       connectionState.serverMigrationState.protocolState->type();
   switch ((frame.type())) {
-    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame:
-      if (protocolStateType !=
-              quic::QuicServerMigrationProtocolServerState::Type::
-                  ExplicitServerState &&
-          protocolStateType !=
-              quic::QuicServerMigrationProtocolServerState::Type::
-                  SymmetricServerState) {
+    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      auto isAllZero = frame.asServerMigrationFrame()->address.isAllZero();
+      if ((!isAllZero &&
+           protocolStateType !=
+               quic::QuicServerMigrationProtocolServerState::Type::
+                   ExplicitServerState) ||
+          (isAllZero &&
+           protocolStateType !=
+               quic::QuicServerMigrationProtocolServerState::Type::
+                   SymmetricServerState)) {
         throw quic::QuicTransportException(errorMsg, errorCode);
       }
+    }
     case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       if (protocolStateType !=
           quic::QuicServerMigrationProtocolServerState::Type::
