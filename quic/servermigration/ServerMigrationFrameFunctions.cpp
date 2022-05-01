@@ -254,7 +254,7 @@ void throwIfUnexpectedServerMigratedFrame(
       quic::TransportErrorCode::PROTOCOL_VIOLATION);
 }
 
-void handleClientReceptionOfPoolMigrationAddress(
+void handlePoolMigrationAddressFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
   // Do not process duplicates.
@@ -305,7 +305,7 @@ void handleClientReceptionOfPoolMigrationAddress(
   connectionState.serverMigrationState.protocolState = std::move(protocolState);
 }
 
-void handleServerReceptionOfPoolMigrationAddressAck(
+void handlePoolMigrationAddressAck(
     quic::QuicServerConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
   auto protocolState = connectionState.serverMigrationState.protocolState
@@ -376,7 +376,7 @@ void updateServerMigrationFrameOnPacketReceived(
       return;
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
-      handleClientReceptionOfPoolMigrationAddress(
+      handlePoolMigrationAddressFrame(
           connectionState, *frame.asPoolMigrationAddressFrame());
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
@@ -406,7 +406,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
       return;
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
-      handleServerReceptionOfPoolMigrationAddressAck(
+      handlePoolMigrationAddressAck(
           connectionState, *frame.asPoolMigrationAddressFrame());
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
