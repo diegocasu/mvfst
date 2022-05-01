@@ -33,156 +33,225 @@ void throwIfMigrationIsNotEnabled(
   }
 }
 
-/**
- * Throws a QuicTransportException if the given frame type does not belong to
- * one of the negotiated server migration protocols.
- * The function assumes that the server migration is enabled, i.e. that
- * a call to throwIfServerMigrationIsNotEnabled() does not cause an exception.
- * @tparam T               either QuicServerConnectionState or
- *                         QuicClientConnectionState.
- * @param connectionState  the connection state of the client or the server.
- * @param frame            the server migration frame.
- * @param errorMsg         the error message of the exception.
- * @param errorCode        the error code of the exception.
- */
-template <class T>
-void throwIfProtocolWasNotNegotiated(
-    const T& connectionState,
-    const quic::QuicServerMigrationFrame& frame,
-    const std::string& errorMsg,
-    const quic::TransportErrorCode errorCode) {
-  static_assert(
-      std::is_same<T, quic::QuicServerConnectionState>::value ||
-          std::is_same<T, quic::QuicClientConnectionState>::value,
-      "Template type parameter must be either QuicServerConnectionState or QuicClientConnectionState");
-
-  auto& negotiatedProtocols =
-      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
-          .value();
-  switch (frame.type()) {
-    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame: {
-      auto isAllZero = frame.asServerMigrationFrame()->address.isAllZero();
-      if ((!isAllZero &&
-           !negotiatedProtocols.count(
-               quic::ServerMigrationProtocol::EXPLICIT)) ||
-          (isAllZero &&
-           !negotiatedProtocols.count(
-               quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC))) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
-    }
-    case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
-      if (!negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::SYMMETRIC) &&
-          !negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
-    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      if (!negotiatedProtocols.count(
-              quic::ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
+void throwIfUnexpectedPoolMigrationAddressFrame(
+    const quic::QuicServerConnectionState& connectionState) {
+  if (!connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+           ->count(quic::ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
+    throw quic::QuicTransportException(
+        "Pool of Addresses protocol not negotiated",
+        quic::TransportErrorCode::INTERNAL_ERROR);
   }
-  folly::assume_unreachable();
+  if (!connectionState.serverMigrationState.protocolState) {
+    throw quic::QuicTransportException(
+        "Pool of Addresses protocol state not initialized",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+  if (connectionState.serverMigrationState.protocolState->type() !=
+      quic::QuicServerMigrationProtocolServerState::Type::
+          PoolOfAddressesServerState) {
+    throw quic::QuicTransportException(
+        "Pool of Addresses protocol took the place of another protocol",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
 }
 
-/**
- * Throws a QuicTransportException if the migration protocol state saved
- * in the client connection state does not match the type of the given frame.
- * If the protocol state has not already been created, no exception is raised.
- * @param connectionState  the connection state of the client.
- * @param frame            the server migration frame.
- * @param errorMsg         the error message of the exception.
- * @param errorCode        the error code of the exception.
- */
-void throwIfProtocolStateNotMatching(
-    const quic::QuicClientConnectionState& connectionState,
-    const quic::QuicServerMigrationFrame& frame,
-    const std::string& errorMsg,
-    const quic::TransportErrorCode errorCode) {
+void throwIfUnexpectedPoolMigrationAddressFrame(
+    const quic::QuicClientConnectionState& connectionState) {
+  if (!connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+           ->count(quic::ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
+    throw quic::QuicTransportException(
+        "Pool of Addresses protocol not negotiated",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
   if (!connectionState.serverMigrationState.protocolState) {
     return;
   }
-
-  auto protocolStateType =
-      connectionState.serverMigrationState.protocolState->type();
-  switch ((frame.type())) {
-    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      if (protocolStateType !=
-          quic::QuicServerMigrationProtocolClientState::Type::
-              PoolOfAddressesClientState) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
+  if (connectionState.serverMigrationState.protocolState->type() !=
+      quic::QuicServerMigrationProtocolClientState::Type::
+          PoolOfAddressesClientState) {
+    throw quic::QuicTransportException(
+        "Pool of Addresses protocol took the place of another protocol",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
-  folly::assume_unreachable();
 }
 
-/**
- * Throws a QuicTransportException if the migration protocol state saved
- * in the server connection state does not match the type of the given frame.
- * If the protocol state has not already been created, an exception is raised.
- * @param connectionState  the connection state of the server.
- * @param frame            the server migration frame.
- * @param errorMsg         the error message of the exception.
- * @param errorCode        the error code of the exception.
- */
-void throwIfProtocolStateNotMatching(
+void throwIfUnexpectedServerMigrationFrame(
     const quic::QuicServerConnectionState& connectionState,
-    const quic::QuicServerMigrationFrame& frame,
-    const std::string& errorMsg,
-    const quic::TransportErrorCode errorCode) {
-  if (!connectionState.serverMigrationState.protocolState) {
-    throw quic::QuicTransportException(errorMsg, errorCode);
+    const quic::ServerMigrationFrame& frame) {
+  auto& negotiatedProtocols =
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .value();
+
+  if (!frame.address.isAllZero()) {
+    // Explicit protocol.
+    if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT)) {
+      throw quic::QuicTransportException(
+          "Explicit protocol not negotiated",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    if (!connectionState.serverMigrationState.protocolState) {
+      throw quic::QuicTransportException(
+          "Explicit protocol state not initialized",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    if (connectionState.serverMigrationState.protocolState->type() !=
+        quic::QuicServerMigrationProtocolServerState::Type::
+            ExplicitServerState) {
+      throw quic::QuicTransportException(
+          "Explicit protocol took the place of another protocol",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    return;
   }
 
-  auto protocolStateType =
-      connectionState.serverMigrationState.protocolState->type();
-  switch ((frame.type())) {
-    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame: {
-      auto isAllZero = frame.asServerMigrationFrame()->address.isAllZero();
-      if ((!isAllZero &&
-           protocolStateType !=
-               quic::QuicServerMigrationProtocolServerState::Type::
-                   ExplicitServerState) ||
-          (isAllZero &&
-           protocolStateType !=
-               quic::QuicServerMigrationProtocolServerState::Type::
-                   SynchronizedSymmetricServerState)) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-    }
-    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
-      if (protocolStateType !=
-          quic::QuicServerMigrationProtocolServerState::Type::
-              PoolOfAddressesServerState) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
-    case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame:
-      if (protocolStateType !=
-              quic::QuicServerMigrationProtocolServerState::Type::
-                  SymmetricServerState &&
-          protocolStateType !=
-              quic::QuicServerMigrationProtocolServerState::Type::
-                  SynchronizedSymmetricServerState) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      if (protocolStateType ==
-              quic::QuicServerMigrationProtocolServerState::Type::
-                  SynchronizedSymmetricServerState &&
-          !connectionState.serverMigrationState.protocolState
-               ->asSynchronizedSymmetricServerState()
-               ->migrationAcknowledged) {
-        throw quic::QuicTransportException(errorMsg, errorCode);
-      }
-      return;
+  // Synchronized symmetric protocol.
+  if (!negotiatedProtocols.count(
+          quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
+    throw quic::QuicTransportException(
+        "Synchronized Symmetric protocol not negotiated",
+        quic::TransportErrorCode::INTERNAL_ERROR);
   }
-  folly::assume_unreachable();
+  if (!connectionState.serverMigrationState.protocolState) {
+    throw quic::QuicTransportException(
+        "Synchronized Symmetric protocol state not initialized",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+  if (connectionState.serverMigrationState.protocolState->type() !=
+      quic::QuicServerMigrationProtocolServerState::Type::
+          SynchronizedSymmetricServerState) {
+    throw quic::QuicTransportException(
+        "Synchronized Symmetric protocol took the place of another protocol",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+}
+
+void throwIfUnexpectedServerMigrationFrame(
+    const quic::QuicClientConnectionState& connectionState,
+    const quic::ServerMigrationFrame& frame) {
+  auto& negotiatedProtocols =
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .value();
+
+  if (!frame.address.isAllZero()) {
+    // Explicit protocol.
+    if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::EXPLICIT)) {
+      throw quic::QuicTransportException(
+          "Explicit protocol not negotiated",
+          quic::TransportErrorCode::PROTOCOL_VIOLATION);
+    }
+    if (!connectionState.serverMigrationState.protocolState) {
+      return;
+    }
+    if (connectionState.serverMigrationState.protocolState->type() !=
+        quic::QuicServerMigrationProtocolClientState::Type::
+            ExplicitClientState) {
+      throw quic::QuicTransportException(
+          "Explicit protocol took the place of another protocol",
+          quic::TransportErrorCode::PROTOCOL_VIOLATION);
+    }
+    return;
+  }
+
+  // Synchronized symmetric protocol.
+  if (!negotiatedProtocols.count(
+          quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
+    throw quic::QuicTransportException(
+        "Synchronized Symmetric protocol not negotiated",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+  if (!connectionState.serverMigrationState.protocolState) {
+    return;
+  }
+  if (connectionState.serverMigrationState.protocolState->type() !=
+      quic::QuicServerMigrationProtocolClientState::Type::
+          SynchronizedSymmetricClientState) {
+    throw quic::QuicTransportException(
+        "Synchronized Symmetric protocol took the place of another protocol",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+}
+
+void throwIfUnexpectedServerMigratedFrame(
+    const quic::QuicServerConnectionState& connectionState) {
+  auto& negotiatedProtocols =
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .value();
+
+  if (!connectionState.serverMigrationState.protocolState) {
+    throw quic::QuicTransportException(
+        "Symmetric or Synchronized Symmetric protocol state not initialized",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolServerState::Type::
+          SymmetricServerState) {
+    if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::SYMMETRIC)) {
+      throw quic::QuicTransportException(
+          "Symmetric protocol not negotiated",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    return;
+  }
+
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolServerState::Type::
+          SynchronizedSymmetricServerState) {
+    if (!negotiatedProtocols.count(
+            quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
+      throw quic::QuicTransportException(
+          "Synchronized Symmetric protocol not negotiated",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    if (!connectionState.serverMigrationState.protocolState
+             ->asSynchronizedSymmetricServerState()
+             ->migrationAcknowledged) {
+      throw quic::QuicTransportException(
+          "Synchronized Symmetric protocol sent a SERVER_MIGRATED frame before "
+          "the reception of an acknowledgement for a SERVER_MIGRATION frame",
+          quic::TransportErrorCode::INTERNAL_ERROR);
+    }
+    return;
+  }
+
+  throw quic::QuicTransportException(
+      "Symmetric or Synchronized Symmetric protocol took the place of another protocol",
+      quic::TransportErrorCode::INTERNAL_ERROR);
+}
+
+void throwIfUnexpectedServerMigratedFrame(
+    const quic::QuicClientConnectionState& connectionState) {
+  auto& negotiatedProtocols =
+      connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .value();
+
+  if (!connectionState.serverMigrationState.protocolState ||
+      connectionState.serverMigrationState.protocolState->type() ==
+          quic::QuicServerMigrationProtocolClientState::Type::
+              SymmetricClientState) {
+    // Symmetric protocol.
+    if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::SYMMETRIC)) {
+      throw quic::QuicTransportException(
+          "Symmetric protocol not negotiated",
+          quic::TransportErrorCode::PROTOCOL_VIOLATION);
+    }
+    return;
+  }
+
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolClientState::Type::
+          SynchronizedSymmetricClientState) {
+    if (!negotiatedProtocols.count(
+            quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
+      throw quic::QuicTransportException(
+          "Synchronized Symmetric protocol not negotiated",
+          quic::TransportErrorCode::PROTOCOL_VIOLATION);
+    }
+  }
+
+  throw quic::QuicTransportException(
+      "Symmetric or Synchronized Symmetric protocol took the place of another protocol",
+      quic::TransportErrorCode::PROTOCOL_VIOLATION);
 }
 
 void handleClientReceptionOfPoolMigrationAddress(
@@ -297,23 +366,21 @@ void updateServerMigrationFrameOnPacketReceived(
     const QuicServerMigrationFrame& frame) {
   throwIfMigrationIsNotEnabled(
       connectionState,
-      "Client received a server migration frame, but the server migration is disabled",
-      TransportErrorCode::PROTOCOL_VIOLATION);
-  throwIfProtocolWasNotNegotiated(
-      connectionState,
-      frame,
-      "Client received a server migration frame belonging to a not negotiated protocol",
-      TransportErrorCode::PROTOCOL_VIOLATION);
-  throwIfProtocolStateNotMatching(
-      connectionState,
-      frame,
-      "Client received a server migration frame not matching the protocol in use",
+      "Server migration is disabled",
       TransportErrorCode::PROTOCOL_VIOLATION);
 
   switch (frame.type()) {
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame:
+      throwIfUnexpectedServerMigrationFrame(
+          connectionState, *frame.asServerMigrationFrame());
+      return;
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
+      throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
       handleClientReceptionOfPoolMigrationAddress(
           connectionState, *frame.asPoolMigrationAddressFrame());
+      return;
+    case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      throwIfUnexpectedServerMigratedFrame(connectionState);
       return;
   }
   folly::assume_unreachable();
@@ -322,25 +389,28 @@ void updateServerMigrationFrameOnPacketReceived(
 void updateServerMigrationFrameOnPacketAckReceived(
     QuicServerConnectionState& connectionState,
     const QuicServerMigrationFrame& frame) {
+  // The various checks (server migration enabled, protocol negotiated,
+  // consistent state, etc.) are performed here when the ack is received,
+  // not when the corresponding frame is sent. They are not strictly necessary
+  // if the functions calling sendServerMigrationFrame() are correct, but
+  // can help in spotting bugs or wrong operations during the migration.
   throwIfMigrationIsNotEnabled(
       connectionState,
-      "Server received a server migration frame acknowledgement, but the server migration is disabled",
-      TransportErrorCode::INTERNAL_ERROR);
-  throwIfProtocolWasNotNegotiated(
-      connectionState,
-      frame,
-      "Server received a server migration frame acknowledgement belonging to a not negotiated protocol",
-      TransportErrorCode::INTERNAL_ERROR);
-  throwIfProtocolStateNotMatching(
-      connectionState,
-      frame,
-      "Server received a server migration frame acknowledgement not matching the protocol in use",
+      "Server migration is disabled",
       TransportErrorCode::INTERNAL_ERROR);
 
   switch (frame.type()) {
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame:
+      throwIfUnexpectedServerMigrationFrame(
+          connectionState, *frame.asServerMigrationFrame());
+      return;
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
+      throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
       handleServerReceptionOfPoolMigrationAddressAck(
           connectionState, *frame.asPoolMigrationAddressFrame());
+      return;
+    case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      throwIfUnexpectedServerMigratedFrame(connectionState);
       return;
   }
   folly::assume_unreachable();
