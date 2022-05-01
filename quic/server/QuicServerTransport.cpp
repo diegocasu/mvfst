@@ -419,9 +419,8 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
     return;
   }
 
-  auto protocolState = SymmetricServerState();
-  protocolState.migrationAcknowledged = false;
-  serverConn_->serverMigrationState.protocolState = std::move(protocolState);
+  serverConn_->serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
   serverConn_->serverMigrationState.migrationInProgress = true;
   sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(QuicIPAddress()));
 }

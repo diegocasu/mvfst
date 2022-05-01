@@ -2171,9 +2171,6 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetric) {
   ASSERT_EQ(
       server->getNonConstConn().serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
-  EXPECT_TRUE(!server->getNonConstConn()
-                   .serverMigrationState.protocolState->asSymmetricServerState()
-                   ->migrationAcknowledged);
   EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
   EXPECT_TRUE(
       server->getNonConstConn().serverMigrationState.migrationInProgress);
@@ -2211,7 +2208,7 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetr
   // Test invalid state (same protocol and different protocol).
   ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
   server->getNonConstConn().serverMigrationState.protocolState =
-      SymmetricServerState();
+      SynchronizedSymmetricServerState();
   server->onImminentServerMigration(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC, folly::none);
 
@@ -2243,13 +2240,12 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetr
   ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
   ASSERT_EQ(
       server->getNonConstConn().serverMigrationState.protocolState->type(),
-      QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
-  ASSERT_TRUE(server->getNonConstConn()
-                  .serverMigrationState.protocolState->asSymmetricServerState()
-                  ->migrationAcknowledged);
+      QuicServerMigrationProtocolServerState::Type::
+          SynchronizedSymmetricServerState);
   EXPECT_FALSE(server->getNonConstConn()
-                   .serverMigrationState.protocolState->asSymmetricServerState()
-                   ->migrationAcknowledged.value());
+                   .serverMigrationState.protocolState
+                   ->asSynchronizedSymmetricServerState()
+                   ->migrationAcknowledged);
   ASSERT_FALSE(server->getNonConstConn().pendingEvents.frames.empty());
   EXPECT_EQ(
       *server->getNonConstConn()
