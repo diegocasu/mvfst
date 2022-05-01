@@ -45,8 +45,43 @@ struct PoolOfAddressesClientState {
   }
 };
 
+struct ExplicitClientState {
+  QuicIPAddress migrationAddress;
+
+  bool operator==(const ExplicitClientState& rhs) const {
+    return migrationAddress == rhs.migrationAddress;
+  }
+
+  bool operator!=(const ExplicitClientState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
+struct SymmetricClientState {
+  bool operator==(const SymmetricClientState& /*rhs*/) const {
+    return true;
+  }
+
+  bool operator!=(const SymmetricClientState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
+struct SynchronizedSymmetricClientState {
+  bool operator==(const SynchronizedSymmetricClientState& /*rhs*/) const {
+    return true;
+  }
+
+  bool operator!=(const SynchronizedSymmetricClientState& rhs) const {
+    return !(rhs == *this);
+  }
+};
+
 #define QUIC_SERVER_MIGRATION_PROTOCOL_CLIENT_STATE(F, ...) \
-  F(PoolOfAddressesClientState, __VA_ARGS__)
+  F(PoolOfAddressesClientState, __VA_ARGS__)                \
+  F(ExplicitClientState, __VA_ARGS__)                       \
+  F(SymmetricClientState, __VA_ARGS__)                      \
+  F(SynchronizedSymmetricClientState, __VA_ARGS__)
 
 DECLARE_VARIANT_TYPE(
     QuicServerMigrationProtocolClientState,

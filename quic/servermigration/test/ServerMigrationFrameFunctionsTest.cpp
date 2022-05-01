@@ -192,9 +192,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   enableServerMigrationClientSide();
   doNegotiation();
 
-  // TODO add test with protocol state not matching frame type, so where
-  // clientState.serverMigrationState.protocolState !=
-  // QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState
+  // Test with protocol state not matching the frame type.
+  clientState.serverMigrationState.protocolState = ExplicitClientState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, poolMigrationAddressFrameV4),
+      QuicTransportException);
+  clientState.serverMigrationState.protocolState.clear();
 
   // Test with a frame carrying an address of a different family wrt
   // the one used in the transport socket.
