@@ -49,13 +49,7 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
   }
 };
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedSendServerMigrationFrame) {
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
   ASSERT_TRUE(serverState.pendingEvents.frames.empty());
   ServerMigratedFrame frame;
   sendServerMigrationFrame(serverState, frame);
@@ -66,26 +60,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedSendServerMigrationFra
            .asQuicServerMigrationFrame()
            ->asServerMigratedFrame(),
       frame);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedSendServerMigrationFrame) {
-  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
-
-  // Test with server migration not enabled.
-  ServerMigratedFrame frame;
-  EXPECT_THROW(
-      sendServerMigrationFrame(serverState, frame), QuicTransportException);
-  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
-
-  // Test with negotiated protocol not matching the frame type.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      sendServerMigrationFrame(serverState, frame), QuicTransportException);
-  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {

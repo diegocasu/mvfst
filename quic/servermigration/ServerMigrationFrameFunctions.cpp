@@ -274,15 +274,6 @@ namespace quic {
 void sendServerMigrationFrame(
     QuicServerConnectionState& connectionState,
     QuicServerMigrationFrame frame) {
-  throwIfMigrationIsNotEnabled(
-      connectionState,
-      "Attempting to send a server migration frame with server migration disabled",
-      TransportErrorCode::INTERNAL_ERROR);
-  throwIfProtocolWasNotNegotiated(
-      connectionState,
-      frame,
-      "Attempting to send a server migration frame belonging to a not negotiated protocol",
-      TransportErrorCode::INTERNAL_ERROR);
   connectionState.pendingEvents.frames.emplace_back(std::move(frame));
 }
 
