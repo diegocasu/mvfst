@@ -109,7 +109,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
 
   ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame1));
+      clientState, poolMigrationAddressFrame1, 0));
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -126,7 +126,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
 
   // Test reception of a duplicate.
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame1));
+      clientState, poolMigrationAddressFrame1, 0));
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -142,7 +142,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
           ->migrationAddresses.count(poolMigrationAddressFrame1.address));
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame2));
+      clientState, poolMigrationAddressFrame2, 0));
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -171,7 +171,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   // Test with server migration disabled.
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
 
   // Test with frame type belonging to a not negotiated protocol.
@@ -182,7 +182,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   doNegotiation();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
 
   // Simulate successful negotiation.
@@ -196,7 +196,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   clientState.serverMigrationState.protocolState = ExplicitClientState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
   clientState.serverMigrationState.protocolState.clear();
 
@@ -205,13 +205,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV6),
+          clientState, poolMigrationAddressFrameV6, 0),
       QuicTransportException);
 
   clientState.peerAddress = folly::SocketAddress("::1", 1234);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
 
   // Test with a migration in progress.
@@ -219,7 +219,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
 
   // Test with at least one migration completed.
@@ -227,7 +227,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   clientState.serverMigrationState.numberOfMigrations = 1;
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4),
+          clientState, poolMigrationAddressFrameV4, 0),
       QuicTransportException);
   clientState.serverMigrationState.numberOfMigrations = 0;
 }

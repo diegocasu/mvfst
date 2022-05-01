@@ -254,6 +254,39 @@ void throwIfUnexpectedServerMigratedFrame(
       quic::TransportErrorCode::PROTOCOL_VIOLATION);
 }
 
+bool ignoreOldFrame(
+    const quic::QuicClientConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame,
+    const quic::PacketNum& packetNumber) {
+  // Ignore frames carried in old packets, if fresher ones have already been
+  // processed. Note that the check exploiting the packet number involves only
+  // the frame types that are expected to be found once inside a packet.
+  // POOL_MIGRATION_ADDRESS frames are excluded because:
+  // 1) multiple frames can be carried by the same packet.
+  // If largestProcessedPacketNumber is updated when the first frame is
+  // processed by this function, the others would be ignored in the next
+  // invocations (could be solved by moving the update outside this function,
+  // but there is no need at the moment);
+  // 2) multiple frames can be spread over multiple packets, and the condition
+  // would cause the drop of addresses carried by out-of-order packets.
+  return connectionState.serverMigrationState.largestProcessedPacketNumber &&
+      packetNumber <= connectionState.serverMigrationState
+                          .largestProcessedPacketNumber.value() &&
+      frame.type() !=
+      quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame;
+}
+
+void updateLargestProcessedPacketNumber(
+    quic::QuicClientConnectionState& connectionState,
+    const quic::PacketNum& packetNumber) {
+  if (!connectionState.serverMigrationState.largestProcessedPacketNumber ||
+      packetNumber > connectionState.serverMigrationState
+                         .largestProcessedPacketNumber.value()) {
+    connectionState.serverMigrationState.largestProcessedPacketNumber =
+        packetNumber;
+  }
+}
+
 void handlePoolMigrationAddressFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
@@ -363,11 +396,17 @@ void updateServerMigrationFrameOnPacketReceived(
 
 void updateServerMigrationFrameOnPacketReceived(
     QuicClientConnectionState& connectionState,
-    const QuicServerMigrationFrame& frame) {
+    const QuicServerMigrationFrame& frame,
+    const PacketNum& packetNumber) {
   throwIfMigrationIsNotEnabled(
       connectionState,
       "Server migration is disabled",
       TransportErrorCode::PROTOCOL_VIOLATION);
+
+  if (ignoreOldFrame(connectionState, frame, packetNumber)) {
+    return;
+  }
+  updateLargestProcessedPacketNumber(connectionState, packetNumber);
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::ServerMigrationFrame:

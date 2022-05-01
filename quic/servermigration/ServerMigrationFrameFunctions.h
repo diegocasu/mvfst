@@ -31,10 +31,12 @@ void updateServerMigrationFrameOnPacketReceived(
  * a server migration frame is received.
  * @param connectionState  the client connection state.
  * @param frame            the received server migration frame.
+ * @param packetNumber     the packet number of the packet carrying the frame.
  */
 void updateServerMigrationFrameOnPacketReceived(
     QuicClientConnectionState& connectionState,
-    const QuicServerMigrationFrame& frame);
+    const QuicServerMigrationFrame& frame,
+    const PacketNum& packetNumber);
 
 /**
  * Updates the connection state of the server when an acknowledgement

@@ -602,7 +602,9 @@ void QuicClientTransport::processPacketData(
         if (simpleFrame.type() ==
             QuicSimpleFrame::Type::QuicServerMigrationFrame) {
           updateServerMigrationFrameOnPacketReceived(
-              *clientConn_, *simpleFrame.asQuicServerMigrationFrame());
+              *clientConn_,
+              *simpleFrame.asQuicServerMigrationFrame(),
+              packetNum);
           break;
         }
         updateSimpleFrameOnPacketReceived(
