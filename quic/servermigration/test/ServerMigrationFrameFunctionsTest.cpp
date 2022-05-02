@@ -635,5 +635,87 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
   clientState.serverMigrationState.protocolState.clear();
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynchronizedSymmetricServerMigrationAck) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationAckReceived)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationFrame frame) {
+        EXPECT_TRUE(frame == serverMigrationFrame);
+      });
+  EXPECT_CALL(callback, onServerMigrationReady).Times(Exactly(1));
+
+  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+
+  // Test reception of a correct acknowledgement.
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigrationAck) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, serverMigrationFrame),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          serverState, serverMigrationFrame),
+      QuicTransportException);
+
+  // Test reception without a protocol state.
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState.clear();
+  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame),
+      QuicTransportException);
+
+  // Test with protocol state not matching the frame type.
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame),
+      QuicTransportException);
+}
+
 } // namespace test
 } // namespace quic
