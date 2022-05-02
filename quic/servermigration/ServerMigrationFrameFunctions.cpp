@@ -397,8 +397,34 @@ void handleExplicitServerMigrationFrame(
       quic::TransportErrorCode::PROTOCOL_VIOLATION);
 }
 
+void handleExplicitServerMigrationFrameAck(
+    quic::QuicServerConnectionState& connectionState,
+    const quic::ServerMigrationFrame& frame) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asExplicitServerState();
+
+  if (protocolState->migrationAddress != frame.address) {
+    throw quic::QuicTransportException(
+        "Received an acknowledgement for an unexpected SERVER_MIGRATION frame",
+        quic::TransportErrorCode::INTERNAL_ERROR);
+  }
+
+  protocolState->migrationAcknowledged = true;
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationAckReceived(
+            connectionState.serverConnectionId.value(), frame);
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationReady(connectionState.serverConnectionId.value());
+  }
+}
+
 void handleSynchronizedSymmetricServerMigrationFrame(
     quic::QuicClientConnectionState& connectionState,
+    const quic::ServerMigrationFrame& frame) {}
+
+void handleSynchronizedSymmetricServerMigrationFrameAck(
+    quic::QuicServerConnectionState& connectionState,
     const quic::ServerMigrationFrame& frame) {}
 
 } // namespace
@@ -485,10 +511,19 @@ void updateServerMigrationFrameOnPacketAckReceived(
       TransportErrorCode::INTERNAL_ERROR);
 
   switch (frame.type()) {
-    case QuicServerMigrationFrame::Type::ServerMigrationFrame:
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      auto& serverMigrationFrame = *frame.asServerMigrationFrame();
       throwIfUnexpectedServerMigrationFrame(
-          connectionState, *frame.asServerMigrationFrame());
+          connectionState, serverMigrationFrame);
+      if (serverMigrationFrame.address.isAllZero()) {
+        handleSynchronizedSymmetricServerMigrationFrameAck(
+            connectionState, serverMigrationFrame);
+      } else {
+        handleExplicitServerMigrationFrameAck(
+            connectionState, serverMigrationFrame);
+      }
       return;
+    }
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
       handlePoolMigrationAddressAck(
