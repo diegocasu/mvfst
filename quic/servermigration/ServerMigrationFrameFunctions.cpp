@@ -409,13 +409,15 @@ void handleExplicitServerMigrationFrameAck(
         quic::TransportErrorCode::INTERNAL_ERROR);
   }
 
-  protocolState->migrationAcknowledged = true;
-  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
-    connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationAckReceived(
-            connectionState.serverConnectionId.value(), frame);
-    connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationReady(connectionState.serverConnectionId.value());
+  if (!protocolState->migrationAcknowledged) {
+    protocolState->migrationAcknowledged = true;
+    if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationAckReceived(
+              connectionState.serverConnectionId.value(), frame);
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationReady(connectionState.serverConnectionId.value());
+    }
   }
 }
 
@@ -438,13 +440,15 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
     const quic::ServerMigrationFrame& frame) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricServerState();
-  protocolState->migrationAcknowledged = true;
-  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
-    connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationAckReceived(
-            connectionState.serverConnectionId.value(), frame);
-    connectionState.serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationReady(connectionState.serverConnectionId.value());
+  if (!protocolState->migrationAcknowledged) {
+    protocolState->migrationAcknowledged = true;
+    if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationAckReceived(
+              connectionState.serverConnectionId.value(), frame);
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationReady(connectionState.serverConnectionId.value());
+    }
   }
 }
 

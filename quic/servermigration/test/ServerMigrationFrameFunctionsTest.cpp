@@ -496,6 +496,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedExpli
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigrationFrame);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
+
+  // Test reception of an acknowledgement for a duplicate.
+  ASSERT_TRUE(protocolState->migrationAcknowledged);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExplicitServerMigrationAck) {
@@ -665,6 +670,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynch
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigrationFrame);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
+
+  // Test reception of an acknowledgement for a duplicate.
+  ASSERT_TRUE(protocolState->migrationAcknowledged);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigrationAck) {
