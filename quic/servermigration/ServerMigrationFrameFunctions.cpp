@@ -276,8 +276,30 @@ bool ignoreOldFrame(
       quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame;
 }
 
+bool ignoreOldAck(
+    const quic::QuicServerConnectionState& connectionState,
+    const quic::QuicServerMigrationFrame& frame,
+    const quic::PacketNum& packetNumber) {
+  return connectionState.serverMigrationState.largestProcessedPacketNumber &&
+      packetNumber <= connectionState.serverMigrationState
+                          .largestProcessedPacketNumber.value() &&
+      frame.type() !=
+      quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame;
+}
+
 void updateLargestProcessedPacketNumber(
     quic::QuicClientConnectionState& connectionState,
+    const quic::PacketNum& packetNumber) {
+  if (!connectionState.serverMigrationState.largestProcessedPacketNumber ||
+      packetNumber > connectionState.serverMigrationState
+                         .largestProcessedPacketNumber.value()) {
+    connectionState.serverMigrationState.largestProcessedPacketNumber =
+        packetNumber;
+  }
+}
+
+void updateLargestProcessedPacketNumber(
+    quic::QuicServerConnectionState& connectionState,
     const quic::PacketNum& packetNumber) {
   if (!connectionState.serverMigrationState.largestProcessedPacketNumber ||
       packetNumber > connectionState.serverMigrationState
@@ -524,7 +546,8 @@ void updateServerMigrationFrameOnPacketReceived(
 
 void updateServerMigrationFrameOnPacketAckReceived(
     QuicServerConnectionState& connectionState,
-    const QuicServerMigrationFrame& frame) {
+    const QuicServerMigrationFrame& frame,
+    const PacketNum& packetNumber) {
   // The various checks (server migration enabled, protocol negotiated,
   // consistent state, etc.) are performed here when the ack is received,
   // not when the corresponding frame is sent. They are not strictly necessary
@@ -534,6 +557,11 @@ void updateServerMigrationFrameOnPacketAckReceived(
       connectionState,
       "Server migration is disabled",
       TransportErrorCode::INTERNAL_ERROR);
+
+  if (ignoreOldAck(connectionState, frame, packetNumber)) {
+    return;
+  }
+  updateLargestProcessedPacketNumber(connectionState, packetNumber);
 
   switch (frame.type()) {
     case QuicServerMigrationFrame::Type::ServerMigrationFrame: {

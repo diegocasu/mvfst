@@ -175,6 +175,11 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
         pendingPoolMigrationAddresses;
     folly::Optional<QuicServerMigrationProtocolServerState> protocolState;
 
+    // Largest packet number processed by the server migration layer.
+    // This number refers only to packets containing acknowledgements
+    // for server migration frames, not to all the packets.
+    folly::Optional<PacketNum> largestProcessedPacketNumber;
+
     // Flag telling whether the transport is currently involved in a
     // server migration. The flag is reset after a server migration is
     // completed successfully.

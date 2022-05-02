@@ -266,15 +266,15 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolM
           ->second);
 
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, poolMigrationAddressFrame);
+      serverState, poolMigrationAddressFrame, 0);
   EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
   EXPECT_TRUE(
       protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
           ->second);
 
-  // Simulate reception of a duplicate acknowledgement.
+  // Test reception of an acknowledgement for a duplicate.
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, poolMigrationAddressFrame);
+      serverState, poolMigrationAddressFrame, 1);
   EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
   EXPECT_TRUE(
       protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
@@ -317,21 +317,21 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoo
   ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame),
+          serverState, poolMigrationAddressFrame, 0),
       QuicTransportException);
 
   // Test reception when there is a protocol state, but the address is unknown.
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame),
+          serverState, poolMigrationAddressFrame, 1),
       QuicTransportException);
 
   // Test with protocol state not matching the frame type.
   serverState.serverMigrationState.protocolState = SymmetricServerState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame),
+          serverState, poolMigrationAddressFrame, 2),
       QuicTransportException);
 }
 
@@ -494,13 +494,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedExpli
       serverState.serverMigrationState.protocolState->asExplicitServerState();
   ASSERT_FALSE(protocolState->migrationAcknowledged);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame);
+      serverState, serverMigrationFrame, 0);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
 
   // Test reception of an acknowledgement for a duplicate.
   ASSERT_TRUE(protocolState->migrationAcknowledged);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame);
+      serverState, serverMigrationFrame, 1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExplicitServerMigrationAck) {
@@ -540,7 +540,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExp
   ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame),
+          serverState, serverMigrationFrame, 0),
       QuicTransportException);
 
   // Test reception when there is a protocol state, but the address does not
@@ -549,14 +549,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExp
       ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5050));
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame),
+          serverState, serverMigrationFrame, 1),
       QuicTransportException);
 
   // Test with protocol state not matching the frame type.
   serverState.serverMigrationState.protocolState = SymmetricServerState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame),
+          serverState, serverMigrationFrame, 2),
       QuicTransportException);
 }
 
@@ -668,13 +668,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynch
                            ->asSynchronizedSymmetricServerState();
   ASSERT_FALSE(protocolState->migrationAcknowledged);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame);
+      serverState, serverMigrationFrame, 0);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
 
   // Test reception of an acknowledgement for a duplicate.
   ASSERT_TRUE(protocolState->migrationAcknowledged);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame);
+      serverState, serverMigrationFrame, 1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigrationAck) {
@@ -716,14 +716,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
   ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame),
+          serverState, serverMigrationFrame, 0),
       QuicTransportException);
 
   // Test with protocol state not matching the frame type.
   serverState.serverMigrationState.protocolState = SymmetricServerState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame),
+          serverState, serverMigrationFrame, 1),
       QuicTransportException);
 }
 

@@ -1028,7 +1028,7 @@ void onServerReadDataFromOpen(
                     if (frame.type() ==
                         QuicSimpleFrame::Type::QuicServerMigrationFrame) {
                       updateServerMigrationFrameOnPacketAckReceived(
-                          conn, *frame.asQuicServerMigrationFrame());
+                          conn, *frame.asQuicServerMigrationFrame(), packetNum);
                       break;
                     }
                     // ACK of HandshakeDone is a server-specific behavior.
