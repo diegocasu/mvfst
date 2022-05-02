@@ -48,6 +48,9 @@ struct PoolOfAddressesClientState {
 struct ExplicitClientState {
   QuicIPAddress migrationAddress;
 
+  ExplicitClientState(QuicIPAddress migrationAddress)
+      : migrationAddress(std::move(migrationAddress)) {}
+
   bool operator==(const ExplicitClientState& rhs) const {
     return migrationAddress == rhs.migrationAddress;
   }

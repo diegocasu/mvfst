@@ -193,7 +193,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   doNegotiation();
 
   // Test with protocol state not matching the frame type.
-  clientState.serverMigrationState.protocolState = ExplicitClientState();
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           clientState, poolMigrationAddressFrameV4, 0),
@@ -353,6 +353,118 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateServerMigrationFrameOnPa
 
   updateServerMigrationFrameOnPacketSent(serverState, frame);
   EXPECT_TRUE(serverState.pendingEvents.frames.empty());
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExplicitServerMigration) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationReceived)
+      .Times(Exactly(1))
+      .WillOnce([&](ServerMigrationFrame frame) {
+        EXPECT_TRUE(frame == serverMigrationFrame);
+      });
+
+  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, 0));
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->asExplicitClientState()
+          ->migrationAddress,
+      serverMigrationFrame.address);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+
+  // Test reception of a duplicate.
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, 1));
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->asExplicitClientState()
+          ->migrationAddress,
+      serverMigrationFrame.address);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedExplicitServerMigration)   {
+  ServerMigrationFrame serverMigrationFrameV4(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  ServerMigrationFrame serverMigrationFrameV6(
+      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrameV4, 1),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrameV4, 2),
+      QuicTransportException);
+
+  // Simulate successful negotiation.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  // Test with protocol state not matching the frame type.
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrameV4, 3),
+      QuicTransportException);
+  clientState.serverMigrationState.protocolState.clear();
+
+  // Test with a frame carrying an address of a different family wrt
+  // the one used in the transport socket.
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrameV6, 4),
+      QuicTransportException);
+
+  clientState.peerAddress = folly::SocketAddress("::1", 1234);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrameV4, 5),
+      QuicTransportException);
+  clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
+
+  // Test reception of multiple frames with different addresses.
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrameV4, 6));
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          ServerMigrationFrame(
+              QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 6000)),
+          7),
+      QuicTransportException);
 }
 
 } // namespace test

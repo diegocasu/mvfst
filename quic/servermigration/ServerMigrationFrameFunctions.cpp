@@ -362,6 +362,45 @@ void handlePoolMigrationAddressAck(
   }
 }
 
+void handleExplicitServerMigrationFrame(
+    quic::QuicClientConnectionState& connectionState,
+    const quic::ServerMigrationFrame& frame) {
+  if ((connectionState.peerAddress.getIPAddress().isV4() &&
+       !frame.address.hasIPv4Field()) ||
+      (connectionState.peerAddress.getIPAddress().isV6() &&
+       !frame.address.hasIPv6Field())) {
+    throw quic::QuicTransportException(
+        "Received a SERVER_MIGRATION frame not carrying an address of a supported family",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+
+  if (!connectionState.serverMigrationState.protocolState) {
+    connectionState.serverMigrationState.protocolState =
+        quic::ExplicitClientState(frame.address);
+    connectionState.serverMigrationState.migrationInProgress = true;
+    if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationReceived(frame);
+    }
+    return;
+  }
+
+  // Ignore duplicates.
+  if (connectionState.serverMigrationState.protocolState
+          ->asExplicitClientState()
+          ->migrationAddress == frame.address) {
+    return;
+  }
+
+  throw quic::QuicTransportException(
+      "Received multiple SERVER_MIGRATION frames with different addresses",
+      quic::TransportErrorCode::PROTOCOL_VIOLATION);
+}
+
+void handleSynchronizedSymmetricServerMigrationFrame(
+    quic::QuicClientConnectionState& connectionState,
+    const quic::ServerMigrationFrame& frame) {}
+
 } // namespace
 
 namespace quic {
@@ -407,10 +446,19 @@ void updateServerMigrationFrameOnPacketReceived(
   updateLargestProcessedPacketNumber(connectionState, packetNumber);
 
   switch (frame.type()) {
-    case QuicServerMigrationFrame::Type::ServerMigrationFrame:
+    case QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      auto& serverMigrationFrame = *frame.asServerMigrationFrame();
       throwIfUnexpectedServerMigrationFrame(
-          connectionState, *frame.asServerMigrationFrame());
+          connectionState, serverMigrationFrame);
+      if (serverMigrationFrame.address.isAllZero()) {
+        handleSynchronizedSymmetricServerMigrationFrame(
+            connectionState, serverMigrationFrame);
+      } else {
+        handleExplicitServerMigrationFrame(
+            connectionState, serverMigrationFrame);
+      }
       return;
+    }
     case QuicServerMigrationFrame::Type::PoolMigrationAddressFrame:
       throwIfUnexpectedPoolMigrationAddressFrame(connectionState);
       handlePoolMigrationAddressFrame(

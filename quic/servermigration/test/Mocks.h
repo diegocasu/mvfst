@@ -49,6 +49,18 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
 
   MOCK_METHOD(
       void,
+      onServerMigrationReceived,
+      (ServerMigrationFrame frame),
+      (noexcept, override));
+
+  MOCK_METHOD(
+      void,
+      onServerMigrationAckReceived,
+      (ConnectionId serverConnectionId, ServerMigrationFrame frame),
+      (noexcept, override));
+
+  MOCK_METHOD(
+      void,
       onServerMigrationFailed,
       (ConnectionId serverConnectionId, ServerMigrationError error),
       (noexcept, override));
