@@ -555,5 +555,85 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExp
       QuicTransportException);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynchronizedSymmetricServerMigration) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationReceived)
+      .Times(Exactly(1))
+      .WillOnce([&](ServerMigrationFrame frame) {
+        EXPECT_TRUE(frame == serverMigrationFrame);
+      });
+
+  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, 0));
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::
+          SynchronizedSymmetricClientState);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+
+  // Test reception of a duplicate.
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, 1));
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::
+          SynchronizedSymmetricClientState);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSynchronizedSymmetricServerMigration)   {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrame, 1),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrame, 2),
+      QuicTransportException);
+
+  // Simulate successful negotiation.
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  // Test with protocol state not matching the frame type.
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigrationFrame, 3),
+      QuicTransportException);
+  clientState.serverMigrationState.protocolState.clear();
+}
+
 } // namespace test
 } // namespace quic

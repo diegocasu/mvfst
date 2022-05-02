@@ -421,7 +421,17 @@ void handleExplicitServerMigrationFrameAck(
 
 void handleSynchronizedSymmetricServerMigrationFrame(
     quic::QuicClientConnectionState& connectionState,
-    const quic::ServerMigrationFrame& frame) {}
+    const quic::ServerMigrationFrame& frame) {
+  if (!connectionState.serverMigrationState.protocolState) {
+    connectionState.serverMigrationState.protocolState =
+        quic::SynchronizedSymmetricClientState();
+    connectionState.serverMigrationState.migrationInProgress = true;
+    if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationReceived(frame);
+    }
+  }
+}
 
 void handleSynchronizedSymmetricServerMigrationFrameAck(
     quic::QuicServerConnectionState& connectionState,
