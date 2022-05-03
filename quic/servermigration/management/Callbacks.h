@@ -8,14 +8,17 @@
 namespace quic {
 
 /**
- * Callbacks invoked when the state of a client changes in a way that should
- * be notified to the server migration management interface.
+ * Callbacks invoked when the state of a client changes.
  * They should be implemented only on the server side.
  * The callbacks can be invoked by multiple threads (workers) concurrently,
  * thus their implementations must be thread-safe. Moreover, since they are
  * executed synchronously when called, their operations must not be blocking
  * or heavyweight to avoid freezing the worker: if such operations are required,
  * they must be delegated to a separate dedicated thread.
+ * The server connection IDs that are passed as arguments to the callbacks are
+ * the original connection IDs derived by the associated transports, namely the
+ * ones used to finalize the handshake. They can be used to correctly identify
+ * the transports when notifying an imminent server migration.
  */
 class ClientStateUpdateCallback {
  public:
@@ -67,6 +70,10 @@ class ClientStateUpdateCallback {
  * must not be blocking or heavyweight to avoid freezing the worker: if such
  * operations are required, they must be delegated to a separate dedicated
  * thread.
+ * The server connection IDs that are passed as arguments to the callbacks are
+ * the original connection IDs derived by the associated transports, namely the
+ * ones used to finalize the handshake. They can be used to correctly identify
+ * the transports when notifying an imminent server migration.
  */
 class ServerMigrationEventCallback {
  public:

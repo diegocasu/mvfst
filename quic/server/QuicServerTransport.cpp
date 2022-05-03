@@ -203,10 +203,11 @@ void QuicServerTransport::onImminentServerMigration(
     // The value of the server CID is checked because the lambda could be
     // called before the handshake has been finished and the CID derived.
     if (serverConn_->serverMigrationState.serverMigrationEventCallback &&
-        serverConn_->serverConnectionId) {
+        serverConn_->serverMigrationState.originalConnectionId) {
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
-              serverConn_->serverConnectionId.value(), error);
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
     }
     closeImpl(
         QuicError(
@@ -266,7 +267,8 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
     if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
-              serverConn_->serverConnectionId.value(), error);
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
     }
     closeImpl(
         QuicError(
@@ -306,7 +308,8 @@ void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
     if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
-              serverConn_->serverConnectionId.value(), error);
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
     }
     closeImpl(
         QuicError(
@@ -349,7 +352,8 @@ void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
   serverConn_->serverMigrationState.migrationInProgress = true;
   if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
     serverConn_->serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationReady(serverConn_->serverConnectionId.value());
+        ->onServerMigrationReady(
+            serverConn_->serverMigrationState.originalConnectionId.value());
   }
 }
 
@@ -361,7 +365,8 @@ void QuicServerTransport::handleSymmetricImminentServerMigration(
     if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
-              serverConn_->serverConnectionId.value(), error);
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
     }
     closeImpl(
         QuicError(
@@ -386,7 +391,8 @@ void QuicServerTransport::handleSymmetricImminentServerMigration(
   serverConn_->serverMigrationState.migrationInProgress = true;
   if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
     serverConn_->serverMigrationState.serverMigrationEventCallback
-        ->onServerMigrationReady(serverConn_->serverConnectionId.value());
+        ->onServerMigrationReady(
+            serverConn_->serverMigrationState.originalConnectionId.value());
   }
 }
 
@@ -398,7 +404,8 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
     if (serverConn_->serverMigrationState.serverMigrationEventCallback) {
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
-              serverConn_->serverConnectionId.value(), error);
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
     }
     closeImpl(
         QuicError(
@@ -668,7 +675,8 @@ void QuicServerTransport::closeTransport() {
   if (serverConn_->serverMigrationState.clientStateUpdateCallback &&
       serverConn_->serverMigrationState.notifiedHandshakeDone) {
     serverConn_->serverMigrationState.clientStateUpdateCallback
-        ->onConnectionClose(serverConn_->serverConnectionId.value());
+        ->onConnectionClose(
+            serverConn_->serverMigrationState.originalConnectionId.value());
   }
 
   serverConn_->serverHandshakeLayer->cancel();
@@ -860,7 +868,14 @@ void QuicServerTransport::maybeNotifyConnectionIdBound() {
 }
 
 void QuicServerTransport::maybeNotifyHandshakeFinished() {
-  if (serverConn_->serverConnectionId &&
+  if (!serverConn_->serverMigrationState.originalConnectionId &&
+      serverConn_->serverConnectionId &&
+      serverConn_->serverHandshakeLayer->isHandshakeDone()) {
+    serverConn_->serverMigrationState.originalConnectionId =
+        serverConn_->serverConnectionId;
+  }
+
+  if (serverConn_->serverMigrationState.originalConnectionId &&
       serverConn_->serverHandshakeLayer->isHandshakeDone() &&
       serverConn_->serverMigrationState.clientStateUpdateCallback &&
       !serverConn_->serverMigrationState.notifiedHandshakeDone) {
@@ -875,7 +890,7 @@ void QuicServerTransport::maybeNotifyHandshakeFinished() {
     serverConn_->serverMigrationState.clientStateUpdateCallback
         ->onHandshakeFinished(
             serverConn_->originalPeerAddress,
-            serverConn_->serverConnectionId.value(),
+            serverConn_->serverMigrationState.originalConnectionId.value(),
             std::move(negotiatedProtocols));
 
     // Avoid a second invocation of the callback.
@@ -1260,6 +1275,11 @@ CipherInfo QuicServerTransport::getOneRttCipherInfo() const {
       *conn_->oneRttWriteCipher->getKey(),
       *serverConn_->serverHandshakeLayer->getState().cipher(),
       conn_->oneRttWriteHeaderCipher->getKey()->clone()};
+}
+
+const folly::Optional<ConnectionId>&
+QuicServerTransport::getOriginalConnectionId() {
+  return serverConn_->serverMigrationState.originalConnectionId;
 }
 
 } // namespace quic

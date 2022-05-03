@@ -20,6 +20,8 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
 
   void SetUp() override {
     serverState.serverConnectionId = ConnectionId::createRandom(8);
+    serverState.serverMigrationState.originalConnectionId =
+        serverState.serverConnectionId;
     clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
     serverState.peerAddress = folly::SocketAddress("5.6.7.8", 5678);
   }

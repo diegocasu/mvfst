@@ -233,6 +233,12 @@ class QuicServerTransport
 
   virtual CipherInfo getOneRttCipherInfo() const;
 
+  /**
+   * Returns the original connection ID derived by the transport, namely the
+   * one used to finalize the handshake, if the handshake has been finished.
+   */
+  const folly::Optional<ConnectionId>& getOriginalConnectionId();
+
  protected:
   // From ServerHandshake::HandshakeCallback
   virtual void onCryptoEventAvailable() noexcept override;

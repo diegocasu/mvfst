@@ -167,6 +167,13 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
   ConnectionMigrationState migrationState;
 
   struct ServerMigrationState {
+    // The original connection ID derived by the transport and used to finalize
+    // the handshake. It is useful to identify the transport when an imminent
+    // migration is notified. It must be initialized as soon as the handshake
+    // is done and must never change, neither if a NEW_CONNECTION_ID frame is
+    // issued, nor if a RETIRE_CONNECTION_ID frame is received.
+    folly::Optional<ConnectionId> originalConnectionId;
+
     // Server migration protocol negotiator.
     folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
 

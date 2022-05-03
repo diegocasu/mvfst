@@ -379,7 +379,8 @@ void handlePoolMigrationAddressAck(
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onPoolMigrationAddressAckReceived(
-              connectionState.serverConnectionId.value(), frame);
+              connectionState.serverMigrationState.originalConnectionId.value(),
+              frame);
     }
   }
 }
@@ -436,9 +437,11 @@ void handleExplicitServerMigrationFrameAck(
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationAckReceived(
-              connectionState.serverConnectionId.value(), frame);
+              connectionState.serverMigrationState.originalConnectionId.value(),
+              frame);
       connectionState.serverMigrationState.serverMigrationEventCallback
-          ->onServerMigrationReady(connectionState.serverConnectionId.value());
+          ->onServerMigrationReady(connectionState.serverMigrationState
+                                       .originalConnectionId.value());
     }
   }
 }
@@ -467,9 +470,11 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationAckReceived(
-              connectionState.serverConnectionId.value(), frame);
+              connectionState.serverMigrationState.originalConnectionId.value(),
+              frame);
       connectionState.serverMigrationState.serverMigrationEventCallback
-          ->onServerMigrationReady(connectionState.serverConnectionId.value());
+          ->onServerMigrationReady(connectionState.serverMigrationState
+                                       .originalConnectionId.value());
     }
   }
 }
