@@ -1481,4 +1481,42 @@ void QuicServerWorker::onImminentServerMigration(
   }
 }
 
+void QuicServerWorker::onImminentServerMigration(
+    const ServerMigrationProtocol& protocol,
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  std::unordered_set<std::shared_ptr<QuicServerTransport>> processedTransports;
+  auto cidMapIt = connectionIdMap_.begin();
+  while (cidMapIt != connectionIdMap_.end()) {
+    // The method that will be called on the transport pointed by cidMapIt
+    // could close it, thus removing the transport from connectionIdMap_ while
+    // iterating. Since it is guaranteed that only the iterator involved in
+    // the removal from the map is invalidated, the iterator pointing to the
+    // next entry is saved here and will be used to update cidMapIt before
+    // the next while() iteration.
+    auto nextCidMapIt = cidMapIt;
+    ++nextCidMapIt;
+
+    // Avoid calling onImminentServerMigration() multiple times
+    // on the same transport if there are CID aliases.
+    if (!processedTransports.count(cidMapIt->second)) {
+      processedTransports.insert(cidMapIt->second);
+      cidMapIt->second->onImminentServerMigration(protocol, migrationAddress);
+      cidMapIt = nextCidMapIt;
+      continue;
+    }
+    cidMapIt = nextCidMapIt;
+  }
+
+  // Close all the transports still in the handshake phase.
+  auto sourceAddressMapIt = sourceAddressMap_.begin();
+  while (sourceAddressMapIt != sourceAddressMap_.end()) {
+    auto nextSourceAddressMapIt = sourceAddressMapIt;
+    ++nextSourceAddressMapIt;
+    sourceAddressMapIt->second->closeNow(QuicError(
+        QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
+        "Server performed a migration"));
+    sourceAddressMapIt = nextSourceAddressMapIt;
+  }
+}
+
 } // namespace quic

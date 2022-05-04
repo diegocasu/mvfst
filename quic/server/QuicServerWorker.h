@@ -495,6 +495,22 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   void onImminentServerMigration(
       const ServerMigrationSettings& migrationSettings);
 
+  /**
+   * Notifies all the transports managed by the worker that a server migration
+   * is imminent and should be performed using the specified protocol. This
+   * method is useful when all the transports are able to perform a server
+   * migration and negotiated the same protocol.
+   * @param protocol          the migration protocol. It must be one of the
+   *                          protocols that all the transports negotiated.
+   * @param migrationAddress  the migration address to send to the clients. It
+   *                          must be set to folly::none if the given protocol
+   *                          does not need a migration address in this phase,
+   *                          like it happens with the Symmetric protocol.
+   */
+  void onImminentServerMigration(
+      const ServerMigrationProtocol& protocol,
+      const folly::Optional<QuicIPAddress>& migrationAddress);
+
  private:
   /**
    * Creates accepting socket from this server's listening address.
