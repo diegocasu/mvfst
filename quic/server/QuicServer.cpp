@@ -816,4 +816,25 @@ bool QuicServer::removeAcceptObserver(
   return success;
 }
 
+void QuicServer::onImminentServerMigration(
+    const ServerMigrationSettings& migrationSettings) {
+  // Reject new connections until the server migration has been completed.
+  rejectNewConnections([]() { return true; });
+
+  runOnAllWorkers([migrationSettings](auto worker) mutable {
+    worker->onImminentServerMigration(migrationSettings);
+  });
+}
+
+void QuicServer::onImminentServerMigration(
+    const ServerMigrationProtocol& protocol,
+    const folly::Optional<QuicIPAddress>& migrationAddress) {
+  // Reject new connections until the server migration has been completed.
+  rejectNewConnections([]() { return true; });
+
+  runOnAllWorkers([protocol, migrationAddress](auto worker) mutable {
+    worker->onImminentServerMigration(protocol, migrationAddress);
+  });
+}
+
 } // namespace quic

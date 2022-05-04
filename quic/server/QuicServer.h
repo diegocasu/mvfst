@@ -34,6 +34,10 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
       std::function<folly::Optional<quic::TransportSettings>(
           const quic::TransportSettings&,
           const folly::IPAddress&)>;
+  using ServerMigrationSettings = std::unordered_map<
+      ConnectionId,
+      std::pair<ServerMigrationProtocol, folly::Optional<QuicIPAddress>>,
+      ConnectionIdHash>;
 
   static std::shared_ptr<QuicServer> createQuicServer() {
     return std::shared_ptr<QuicServer>(new QuicServer());
@@ -372,6 +376,57 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
   bool removeAcceptObserver(folly::EventBase* evb, AcceptObserver* observer);
 
   void getAllConnectionsStats(std::vector<QuicConnectionStats>& stats);
+
+  /**
+   * Notifies the transports identified by the given connection IDs (CIDs) that
+   * a server migration is imminent and should be performed using the specified
+   * protocols. If a transport is not in the given list, or cannot migrate due
+   * to an error, it is closed. A supplied CID must be the original CID used by
+   * the corresponding server transport to finalize the handshake, i.e. it must
+   * not be a CID issued using a NEW_CONNECTION_ID frame (alias). Such CIDs can
+   * be recovered registering a ClientStateUpdateCallback or calling
+   * getOriginalConnectionId() on the target QuicServerTransport.
+   * Once this method is called, the server starts rejecting any new connection
+   * until the migration is completed. Moreover, this method is asynchronous,
+   * thus the server is not necessarily ready to be migrated when it returns:
+   * it is up to the caller to wait until the ready state is reached, namely
+   * until all the involved transports become ready to migrate.
+   * If setServerMigrationEventCallback() has been previously called, the
+   * transports themselves invoke onServerMigrationReady() to notify this
+   * event. If a transport cannot migrate, it closes the connection with the
+   * client, possibly invoking onServerMigrationFailed() with the related error
+   * code. It is an error to call this method involving a transport that has
+   * not completed the handshake, or multiple times in a row before a
+   * migration is completed.
+   * @param  migrationSettings  the list of connection IDs identifying the
+   *                            transports involved in the migration, together
+   *                            with the protocol to use and possibly the
+   *                            migration address. The protocol must be one of
+   *                            the protocols that the specific transport
+   *                            negotiated with its client. The address must be
+   *                            specified only if required by the protocol (e.g.
+   *                            in the case of the Explicit strategy), otherwise
+   *                            it must be set to folly::none.
+   */
+  void onImminentServerMigration(
+      const ServerMigrationSettings& migrationSettings);
+
+  /**
+   * Notifies all the transports that a server migration is imminent and should
+   * be performed using the specified protocol. This method is useful when all
+   * the transports are able to perform a serve migration and negotiated
+   * the same protocol. Besides this, it acts similarly to
+   * onImminentServerMigration(const ServerMigrationSettings& migrationSettings)
+   * @param protocol          the migration protocol. It must be one of the
+   *                          protocols that all the transports negotiated.
+   * @param migrationAddress  the migration address to send to the clients. It
+   *                          must be set to folly::none if the given protocol
+   *                          does not need a migration address in this phase,
+   *                          like it happens with the Symmetric protocol.
+   */
+  void onImminentServerMigration(
+      const ServerMigrationProtocol& protocol,
+      const folly::Optional<QuicIPAddress>& migrationAddress);
 
  private:
   QuicServer();
