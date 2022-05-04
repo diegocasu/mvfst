@@ -244,6 +244,15 @@ class MockQuicTransport : public QuicServerTransport {
     onNetworkData(peer, networkData);
   }
   MOCK_METHOD(void, setBufAccessor, (BufAccessor*));
+
+  MOCK_METHOD(
+      void,
+      onImminentServerMigration,
+      (const ServerMigrationProtocol& protocol,
+       const folly::Optional<QuicIPAddress>& migrationAddress),
+      (override));
+
+  MOCK_METHOD((folly::Optional<ConnectionId>), getOriginalConnectionId, ());
 };
 
 class MockLoopDetectorCallback : public LoopDetectorCallback {

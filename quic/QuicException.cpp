@@ -125,6 +125,8 @@ folly::StringPiece toString(LocalErrorCode code) {
       return "Pacer not available";
     case LocalErrorCode::SERVER_MIGRATION_FAILED:
       return "Server migration failed";
+    case LocalErrorCode::SERVER_MIGRATED:
+      return "Server migrated";
     default:
       break;
   }
@@ -228,6 +230,7 @@ std::vector<LocalErrorCode> getAllLocalErrorCodes() {
       LocalErrorCode::KNOB_FRAME_UNSUPPORTED,
       LocalErrorCode::PACER_NOT_AVAILABLE,
       LocalErrorCode::SERVER_MIGRATION_FAILED,
+      LocalErrorCode::SERVER_MIGRATED,
   };
   return all;
 }

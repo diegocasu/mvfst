@@ -160,7 +160,7 @@ class QuicServerTransport
    *                          does not need a migration address in this phase,
    *                          like it happens with the Symmetric protocol.
    */
-  void onImminentServerMigration(
+  virtual void onImminentServerMigration(
       const ServerMigrationProtocol& protocol,
       const folly::Optional<QuicIPAddress>& migrationAddress);
 
@@ -237,7 +237,7 @@ class QuicServerTransport
    * Returns the original connection ID derived by the transport, namely the
    * one used to finalize the handshake, if the handshake has been finished.
    */
-  const folly::Optional<ConnectionId>& getOriginalConnectionId();
+  virtual folly::Optional<ConnectionId> getOriginalConnectionId();
 
  protected:
   // From ServerHandshake::HandshakeCallback

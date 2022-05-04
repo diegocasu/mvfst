@@ -1277,8 +1277,7 @@ CipherInfo QuicServerTransport::getOneRttCipherInfo() const {
       conn_->oneRttWriteHeaderCipher->getKey()->clone()};
 }
 
-const folly::Optional<ConnectionId>&
-QuicServerTransport::getOriginalConnectionId() {
+folly::Optional<ConnectionId> QuicServerTransport::getOriginalConnectionId() {
   return serverConn_->serverMigrationState.originalConnectionId;
 }
 

@@ -271,6 +271,7 @@ enum class LocalErrorCode : uint32_t {
   KNOB_FRAME_UNSUPPORTED = 0x4000001B,
   PACER_NOT_AVAILABLE = 0x4000001C,
   SERVER_MIGRATION_FAILED = 0x4000001D,
+  SERVER_MIGRATED = 0x4000001E,
 };
 
 enum class QuicNodeType : bool {

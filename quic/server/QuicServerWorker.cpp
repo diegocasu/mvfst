@@ -1423,4 +1423,62 @@ void QuicServerWorker::getAllConnectionsStats(
   }
 }
 
+void QuicServerWorker::onImminentServerMigration(
+    const ServerMigrationSettings& migrationSettings) {
+  auto cidMapIt = connectionIdMap_.begin();
+  while (cidMapIt != connectionIdMap_.end()) {
+    // The method that will be called on the transport pointed by cidMapIt
+    // could close it, thus removing the transport from connectionIdMap_ while
+    // iterating. Since it is guaranteed that only the iterator involved in
+    // the removal from the map is invalidated, the iterator pointing to the
+    // next entry is saved here and will be used to update cidMapIt before
+    // the next while() iteration.
+    auto nextCidMapIt = cidMapIt;
+    ++nextCidMapIt;
+
+    auto it = migrationSettings.find(cidMapIt->first);
+    if (it != migrationSettings.end()) {
+      cidMapIt->second->onImminentServerMigration(
+          it->second.first, it->second.second);
+      cidMapIt = nextCidMapIt;
+      continue;
+    }
+
+    // Check if this CID is an alias for a CID involved in the migration or not.
+    auto transportOriginalCid = cidMapIt->second->getOriginalConnectionId();
+    if (transportOriginalCid) {
+      it = migrationSettings.find(transportOriginalCid.value());
+      if (it != migrationSettings.end()) {
+        // The CID is an alias. Ignore it, because either the original
+        // CID in connectionIdMap_ has already been found and
+        // onImminentServerMigration() called, or it will be in one of
+        // the next iterations. This avoids calling onImminentServerMigration()
+        // multiple times.
+        cidMapIt = nextCidMapIt;
+        continue;
+      }
+    }
+    // Either the original CID for the transport has no value, i.e. the
+    // handshake is still in progress, or the CID is not involved in the
+    // migration. Then, close the transport. Since calling closeNow() multiple
+    // times on the same transport is not a problem, it is not necessary
+    // to make further checks.
+    cidMapIt->second->closeNow(QuicError(
+        QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
+        "Server performed a migration"));
+    cidMapIt = nextCidMapIt;
+  }
+
+  // Close all the transports still in the handshake phase.
+  auto sourceAddressMapIt = sourceAddressMap_.begin();
+  while (sourceAddressMapIt != sourceAddressMap_.end()) {
+    auto nextSourceAddressMapIt = sourceAddressMapIt;
+    ++nextSourceAddressMapIt;
+    sourceAddressMapIt->second->closeNow(QuicError(
+        QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
+        "Server performed a migration"));
+    sourceAddressMapIt = nextSourceAddressMapIt;
+  }
+}
+
 } // namespace quic

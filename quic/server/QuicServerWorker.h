@@ -114,6 +114,10 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
       std::function<folly::Optional<quic::TransportSettings>(
           const quic::TransportSettings&,
           const folly::IPAddress&)>;
+  using ServerMigrationSettings = std::unordered_map<
+      ConnectionId,
+      std::pair<ServerMigrationProtocol, folly::Optional<QuicIPAddress>>,
+      ConnectionIdHash>;
 
   class WorkerCallback {
    public:
@@ -471,6 +475,25 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   }
 
   void getAllConnectionsStats(std::vector<QuicConnectionStats>& stats);
+
+  /**
+   * Notifies the transports identified by the given connection IDs (CIDs) that
+   * a server migration is imminent and should be performed using the specified
+   * protocols. For each transport managed by the worker, either
+   * onImminentServerMigration() or closeNow() is called.
+   * CIDs of connections not managed by the worker are ignored.
+   * @param  migrationSettings  the list of connection IDs identifying the
+   *                            transports involved in the migration, together
+   *                            with the protocol to use and possibly the
+   *                            migration address. The protocol must be one of
+   *                            the protocols that the specific transport
+   *                            negotiated with its client. The address must be
+   *                            specified only if required by the protocol (e.g.
+   *                            in the case of the Explicit strategy), otherwise
+   *                            it must be set to folly::none.
+   */
+  void onImminentServerMigration(
+      const ServerMigrationSettings& migrationSettings);
 
  private:
   /**
