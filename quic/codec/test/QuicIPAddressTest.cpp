@@ -98,5 +98,29 @@ TEST_F(QuicIPAddressTest, TestHasIPv6Field) {
   EXPECT_TRUE(hasBoth.hasIPv6Field());
 }
 
+TEST_F(QuicIPAddressTest, TestIPv4ConversionToSocketAddress) {
+  QuicIPAddress address(ipv4Address, ipv4Port);
+  auto socketAddress = address.getIPv4AddressAsSocketAddress();
+  EXPECT_EQ(socketAddress.getIPAddress(), ipv4Address);
+  EXPECT_EQ(socketAddress.getPort(), ipv4Port);
+}
+
+TEST_F(QuicIPAddressTest, TestIPv6ConversionToSocketAddress) {
+  QuicIPAddress address(ipv6Address, ipv6Port);
+  auto socketAddress = address.getIPv6AddressAsSocketAddress();
+  EXPECT_EQ(socketAddress.getIPAddress(), ipv6Address);
+  EXPECT_EQ(socketAddress.getPort(), ipv6Port);
+}
+
+TEST_F(QuicIPAddressTest, TestEmptyAddressConversionToSocketAddress) {
+  QuicIPAddress address;
+  auto socketAddressV4 = address.getIPv4AddressAsSocketAddress();
+  auto socketAddressV6 = address.getIPv6AddressAsSocketAddress();
+  EXPECT_TRUE(socketAddressV4.getIPAddress().isZero());
+  EXPECT_EQ(socketAddressV4.getPort(), 0);
+  EXPECT_TRUE(socketAddressV6.getIPAddress().isZero());
+  EXPECT_EQ(socketAddressV6.getPort(), 0);
+}
+
 } // namespace test
 } // namespace quic

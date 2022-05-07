@@ -64,6 +64,14 @@ bool QuicIPAddress::operator!=(const QuicIPAddress& rhs) const {
   return !(rhs == *this);
 }
 
+folly::SocketAddress QuicIPAddress::getIPv4AddressAsSocketAddress() {
+  return {ipv4Address, ipv4Port};
+}
+
+folly::SocketAddress QuicIPAddress::getIPv6AddressAsSocketAddress() {
+  return {ipv6Address, ipv6Port};
+}
+
 size_t QuicIPAddressHash::operator()(const QuicIPAddress& quicIpAddress) const {
   return folly::hash::hash_combine(
       quicIpAddress.ipv4Address.hash(),

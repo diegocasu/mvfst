@@ -62,6 +62,20 @@ struct QuicIPAddress {
    *          and port, false otherwise.
    */
   bool hasIPv6Field() const;
+
+  /**
+   * Returns a socket address object initialized using the IPv4 address
+   * and port stored in the Quic IP address.
+   * @return  a socket address initialized using the IPv4 address and port.
+   */
+  folly::SocketAddress getIPv4AddressAsSocketAddress();
+
+  /**
+   * Returns a socket address object initialized using the IPv6 address
+   * and port stored in the Quic IP address.
+   * @return  a socket address initialized using the IPv6 address and port.
+   */
+  folly::SocketAddress getIPv6AddressAsSocketAddress();
 };
 
 struct QuicIPAddressHash {
