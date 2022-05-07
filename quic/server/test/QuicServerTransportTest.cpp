@@ -1736,24 +1736,52 @@ TEST_F(QuicServerTransportTest, TestAllowServerMigration) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   EXPECT_TRUE(supportedProtocols.empty());
   EXPECT_FALSE(server->allowServerMigration(supportedProtocols));
+  EXPECT_FALSE(server->getConn().serverMigrationState.negotiator);
 
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
+  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      server->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
 
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
+  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      server->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
+
+  std::unordered_set<ServerMigrationProtocol> emptyProtocols;
+  EXPECT_FALSE(server->allowServerMigration(emptyProtocols));
+  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      server->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
 }
 
 TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallback) {
   EXPECT_FALSE(server->setClientStateUpdateCallback(nullptr));
+  EXPECT_FALSE(
+      server->getConn().serverMigrationState.clientStateUpdateCallback);
+
   MockClientStateUpdateCallback callback;
   EXPECT_TRUE(server->setClientStateUpdateCallback(&callback));
+  EXPECT_TRUE(server->getConn().serverMigrationState.clientStateUpdateCallback);
 }
 
 TEST_F(QuicServerTransportTest, TestSetServerMigrationEventCallback) {
   EXPECT_FALSE(server->setServerMigrationEventCallback(nullptr));
+  EXPECT_FALSE(
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+
   MockServerMigrationEventCallback callback;
   EXPECT_TRUE(server->setServerMigrationEventCallback(&callback));
+  EXPECT_TRUE(
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
 }
 
 TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {

@@ -989,20 +989,45 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   EXPECT_TRUE(supportedProtocols.empty());
   EXPECT_FALSE(client->allowServerMigration(supportedProtocols));
+  EXPECT_FALSE(client->getConn().serverMigrationState.negotiator);
 
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
+  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
 
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
+  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
+
+  std::unordered_set<ServerMigrationProtocol> emptyProtocols;
+  EXPECT_FALSE(client->allowServerMigration(emptyProtocols));
+  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
 
   client->closeNow(folly::none);
 }
 
 TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallback) {
   EXPECT_FALSE(client->setServerMigrationEventCallback(nullptr));
+  EXPECT_FALSE(
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+
   MockServerMigrationEventCallback callback;
   EXPECT_TRUE(client->setServerMigrationEventCallback(&callback));
+  EXPECT_TRUE(
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+
   client->closeNow(folly::none);
 }
 
