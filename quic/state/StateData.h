@@ -25,6 +25,7 @@
 #include <quic/state/PacketEvent.h>
 #include <quic/state/PendingPathRateLimiter.h>
 #include <quic/state/QuicConnectionStats.h>
+#include <quic/state/QuicPacketLossCallback.h>
 #include <quic/state/QuicStreamManager.h>
 #include <quic/state/QuicTransportStatsCallback.h>
 #include <quic/state/StreamData.h>
@@ -833,6 +834,11 @@ struct QuicConnectionStateBase : public folly::DelayedDestruction {
   };
 
   DatagramState datagramState;
+
+  // Callback used to inform the transport about packet loss events.
+  // At the moment, it is used only by QuicClientTransport as part of the
+  // server migration extension.
+  folly::Optional<std::shared_ptr<QuicPacketLossCallback>> packetLossCallback;
 };
 
 std::ostream& operator<<(std::ostream& os, const QuicConnectionStateBase& st);

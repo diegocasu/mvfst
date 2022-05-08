@@ -218,5 +218,9 @@ void markPacketLoss(
         break;
     }
   }
+  if (conn.packetLossCallback) {
+    conn.packetLossCallback.value()->onPacketMarkedLost(
+        packet.header.getPacketSequenceNum());
+  }
 }
 } // namespace quic

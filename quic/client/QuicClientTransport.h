@@ -16,6 +16,7 @@
 #include <quic/client/state/ClientStateMachine.h>
 #include <quic/common/BufUtil.h>
 #include <quic/state/QuicConnectionStats.h>
+#include <quic/state/QuicPacketLossCallback.h>
 
 namespace quic {
 
@@ -25,6 +26,7 @@ class QuicClientTransport
     : public QuicTransportBase,
       public folly::AsyncUDPSocket::ReadCallback,
       public folly::AsyncUDPSocket::ErrMessageCallback,
+      public QuicPacketLossCallback,
       public std::enable_shared_from_this<QuicClientTransport> {
  public:
   QuicClientTransport(
@@ -208,6 +210,8 @@ class QuicClientTransport
    private:
     QuicClientTransport* transport_;
   };
+
+  void onPacketMarkedLost(PacketNum packetNumber) override;
 
  protected:
   // From AsyncUDPSocket::ReadCallback

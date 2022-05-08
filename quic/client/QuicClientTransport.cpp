@@ -1804,6 +1804,7 @@ bool QuicClientTransport::allowServerMigration(
   }
   clientConn_->serverMigrationState.negotiator =
       QuicServerMigrationNegotiatorClient(supportedProtocols);
+  clientConn_->packetLossCallback = shared_from_this();
   return true;
 }
 
@@ -1882,5 +1883,7 @@ void QuicClientTransport::maybeSendTransportKnobs() {
     transportKnobsSent_ = true;
   }
 }
+
+void QuicClientTransport::onPacketMarkedLost(PacketNum packetNumber) {}
 
 } // namespace quic
