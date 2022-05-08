@@ -80,4 +80,18 @@ void updateServerMigrationFrameOnPacketLoss(
     QuicConnectionStateBase& connectionState,
     const QuicServerMigrationFrame& frame);
 
+/**
+ * Starts probing a new server address, if the notified packet loss should be
+ * interpreted as a server migration event. It must be called only if a server
+ * migration protocol state has already been created.
+ * @param connectionState   the client connection state.
+ * @param lostPacketNumber  the packet number of the packet marked as lost.
+ * @return                  true if the write looper must be updated in this
+ *                          iteration due to a probe scheduling, false if the
+ *                          write looper should not be updated at all.
+ */
+bool maybeStartServerMigrationProbing(
+    QuicClientConnectionState& connectionState,
+    PacketNum lostPacketNumber);
+
 } // namespace quic

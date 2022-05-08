@@ -47,12 +47,22 @@ struct PoolOfAddressesClientState {
 
 struct ExplicitClientState {
   QuicIPAddress migrationAddress;
+  // Packet number useful to detect a loss that triggers the migration probing.
+  PacketNum packetCarryingServerMigrationAck;
+  bool probingInProgress{false};
 
-  ExplicitClientState(QuicIPAddress migrationAddress)
-      : migrationAddress(std::move(migrationAddress)) {}
+  ExplicitClientState(
+      QuicIPAddress migrationAddress,
+      PacketNum packetCarryingServerMigrationAck)
+      : migrationAddress(std::move(migrationAddress)),
+        packetCarryingServerMigrationAck(
+            std::move(packetCarryingServerMigrationAck)) {}
 
   bool operator==(const ExplicitClientState& rhs) const {
-    return migrationAddress == rhs.migrationAddress;
+    return migrationAddress == rhs.migrationAddress &&
+        packetCarryingServerMigrationAck ==
+        rhs.packetCarryingServerMigrationAck &&
+        probingInProgress == rhs.probingInProgress;
   }
 
   bool operator!=(const ExplicitClientState& rhs) const {
@@ -136,6 +146,12 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
 
     // Counter keeping track of the number of successful server migrations.
     unsigned int numberOfMigrations{0};
+
+    // List of previously used congestion and rtt states, where each entry
+    // reports the corresponding address of the peer. Every time a server
+    // migration happens and both states are reset, a copy of the discarded
+    // information is pushed back into this vector.
+    std::vector<CongestionAndRttState> previousCongestionAndRttStates;
 
     // Callbacks.
     ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};

@@ -61,6 +61,12 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
 
   MOCK_METHOD(
       void,
+      onServerMigrationProbingStarted,
+      (ServerMigrationProtocol protocol, folly::SocketAddress probingAddress),
+      (noexcept, override));
+
+  MOCK_METHOD(
+      void,
       onServerMigrationFailed,
       (ConnectionId serverConnectionId, ServerMigrationError error),
       (noexcept, override));

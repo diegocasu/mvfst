@@ -126,6 +126,18 @@ class ServerMigrationEventCallback {
       ServerMigrationFrame /*frame*/) noexcept {};
 
   /**
+   * Called when a client starts probing a new server address sending a PING
+   * frame. For the Explicit protocol, it is invoked only once at the beginning
+   * of the probing phase; for the Pool of Addresses protocol, it is invoked
+   * every time a different address of the pool is involved in the probing.
+   * @param protocol        the server migration protocol.
+   * @param probingAddress  the address that is being probed.
+   */
+  virtual void onServerMigrationProbingStarted(
+      ServerMigrationProtocol /*protocol*/,
+      folly::SocketAddress /*probingAddress*/) noexcept {};
+
+  /**
    * Called when the invocation of onImminentServerMigration() on a
    * transport fails. It should be implemented only on the server side.
    * @param serverConnectionId  the connection ID of the QuicServerTransport

@@ -420,6 +420,26 @@ struct ReadDatagram {
   BufQueue buf_;
 };
 
+struct CongestionAndRttState {
+  // The corresponding peer address
+  folly::SocketAddress peerAddress;
+
+  // Time when this state is recorded, i.e. when migration happens
+  TimePoint recordTime;
+
+  // Congestion controller
+  std::unique_ptr<CongestionController> congestionController;
+
+  // Smooth rtt
+  std::chrono::microseconds srtt;
+  // Latest rtt
+  std::chrono::microseconds lrtt;
+  // Rtt var
+  std::chrono::microseconds rttvar;
+  // Minimum rtt
+  std::chrono::microseconds mrtt;
+};
+
 struct QuicConnectionStateBase : public folly::DelayedDestruction {
   virtual ~QuicConnectionStateBase() override = default;
 

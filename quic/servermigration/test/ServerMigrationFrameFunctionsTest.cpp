@@ -17,6 +17,7 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
       FizzClientQuicHandshakeContext::Builder().build()};
   std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
   std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
+  DefaultCongestionControllerFactory congestionControllerFactory;
 
   void SetUp() override {
     serverState.serverConnectionId = ConnectionId::createRandom(8);
@@ -24,6 +25,14 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
         serverState.serverConnectionId;
     clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
     serverState.peerAddress = folly::SocketAddress("5.6.7.8", 5678);
+    clientState.congestionController =
+        congestionControllerFactory.makeCongestionController(
+            clientState,
+            clientState.transportSettings.defaultCongestionController);
+    serverState.congestionController =
+        congestionControllerFactory.makeCongestionController(
+            serverState,
+            serverState.transportSettings.defaultCongestionController);
   }
 
   void enableServerMigrationServerSide() {
@@ -383,10 +392,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
   EXPECT_EQ(
-      clientState.serverMigrationState.protocolState->asExplicitClientState()
-          ->migrationAddress,
-      serverMigrationFrame.address);
+      protocolState->packetCarryingServerMigrationAck,
+      getNextPacketNum(clientState, PacketNumberSpace::AppData));
+  EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
 
   // Test reception of a duplicate.
@@ -396,10 +408,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
+  protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
   EXPECT_EQ(
-      clientState.serverMigrationState.protocolState->asExplicitClientState()
-          ->migrationAddress,
-      serverMigrationFrame.address);
+      protocolState->packetCarryingServerMigrationAck,
+      getNextPacketNum(clientState, PacketNumberSpace::AppData));
+  EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
 }
 
@@ -727,6 +742,82 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigrationFrame, 1),
       QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationProbing) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  PacketNum serverMigrationAckPacketNumber = 1;
+  PacketNum packetBeforeServerMigrationAck = serverMigrationAckPacketNumber - 1;
+  PacketNum packetAfterServerMigrationAck = serverMigrationAckPacketNumber + 1;
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationProbingStarted)
+      .Times(Exactly(1))
+      .WillOnce([&](ServerMigrationProtocol protocol,
+                    folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::EXPLICIT);
+        EXPECT_EQ(
+            probingAddress, migrationAddress.getIPv4AddressAsSocketAddress());
+      });
+
+  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      clientState.peerAddress);
+  ASSERT_TRUE(packetBeforeServerMigrationAck < serverMigrationAckPacketNumber);
+  ASSERT_TRUE(packetAfterServerMigrationAck > serverMigrationAckPacketNumber);
+  ASSERT_FALSE(protocolState->probingInProgress);
+  ASSERT_FALSE(clientState.pendingEvents.sendPing);
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+
+  auto updateWriteLooper = maybeStartServerMigrationProbing(
+      clientState, packetBeforeServerMigrationAck);
+  EXPECT_NE(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(clientState.pendingEvents.sendPing);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_FALSE(updateWriteLooper);
+
+  updateWriteLooper = maybeStartServerMigrationProbing(
+      clientState, serverMigrationAckPacketNumber);
+  EXPECT_NE(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(clientState.pendingEvents.sendPing);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_FALSE(updateWriteLooper);
+
+  updateWriteLooper = maybeStartServerMigrationProbing(
+      clientState, packetAfterServerMigrationAck);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_TRUE(clientState.pendingEvents.sendPing);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  // Compare pointers to detect that a new congestion controller has been set.
+  EXPECT_NE(
+      clientState.congestionController,
+      clientState.serverMigrationState.previousCongestionAndRttStates.at(0)
+          .congestionController);
+  EXPECT_TRUE(updateWriteLooper);
 }
 
 } // namespace test

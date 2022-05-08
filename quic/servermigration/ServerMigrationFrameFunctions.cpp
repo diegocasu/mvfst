@@ -2,6 +2,8 @@
 
 namespace {
 
+using namespace std::chrono_literals;
+
 /**
  * Throws a QuicTransportException if the server migration is not enabled,
  * namely if one of the following conditions is true:
@@ -309,6 +311,39 @@ void updateLargestProcessedPacketNumber(
   }
 }
 
+quic::CongestionAndRttState moveCurrentCongestionAndRttState(
+    quic::QuicConnectionStateBase& connectionState) {
+  quic::CongestionAndRttState state;
+  state.peerAddress = connectionState.peerAddress;
+  state.recordTime = quic::Clock::now();
+  state.congestionController = std::move(connectionState.congestionController);
+  state.srtt = connectionState.lossState.srtt;
+  state.lrtt = connectionState.lossState.lrtt;
+  state.rttvar = connectionState.lossState.rttvar;
+  state.mrtt = connectionState.lossState.mrtt;
+  return state;
+}
+
+void resetCongestionAndRttState(
+    quic::QuicConnectionStateBase& connectionState) {
+  if (connectionState.congestionControllerFactory) {
+    connectionState.congestionController =
+        connectionState.congestionControllerFactory->makeCongestionController(
+            connectionState,
+            connectionState.transportSettings.defaultCongestionController);
+  } else {
+    quic::DefaultCongestionControllerFactory congestionControllerFactory;
+    connectionState.congestionController =
+        congestionControllerFactory.makeCongestionController(
+            connectionState,
+            connectionState.transportSettings.defaultCongestionController);
+  }
+  connectionState.lossState.srtt = 0us;
+  connectionState.lossState.lrtt = 0us;
+  connectionState.lossState.rttvar = 0us;
+  connectionState.lossState.mrtt = quic::kDefaultMinRtt;
+}
+
 void handlePoolMigrationAddressFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
@@ -399,7 +434,10 @@ void handleExplicitServerMigrationFrame(
 
   if (!connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState =
-        quic::ExplicitClientState(frame.address);
+        quic::ExplicitClientState(
+            frame.address,
+            quic::getNextPacketNum(
+                connectionState, quic::PacketNumberSpace::AppData));
     connectionState.serverMigrationState.migrationInProgress = true;
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
@@ -477,6 +515,49 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
                                        .originalConnectionId.value());
     }
   }
+}
+
+bool maybeStartExplicitServerMigrationProbing(
+    quic::QuicClientConnectionState& connectionState,
+    quic::PacketNum packetNumber) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asExplicitClientState();
+  if (protocolState->probingInProgress ||
+      packetNumber <= protocolState->packetCarryingServerMigrationAck) {
+    // Ignore the packet loss and do not update the WriteLooper.
+    // If a probe is lost, its retransmission is not handled here.
+    return false;
+  }
+
+  // The packet declared lost was sent after the packet carrying the
+  // SERVER_MIGRATION acknowledgement, so start probing the new server address.
+  auto congestionRttState = moveCurrentCongestionAndRttState(connectionState);
+  connectionState.serverMigrationState.previousCongestionAndRttStates
+      .emplace_back(std::move(congestionRttState));
+  resetCongestionAndRttState(connectionState);
+
+  connectionState.peerAddress =
+      connectionState.peerAddress.getIPAddress().isV4()
+      ? protocolState->migrationAddress.getIPv4AddressAsSocketAddress()
+      : protocolState->migrationAddress.getIPv6AddressAsSocketAddress();
+
+  // The ping is not scheduled using the sendPing() method offered by
+  // QuicTransportBase, because the latter requires to pass a timeout value
+  // for each invocation, while here the possible retransmissions of the
+  // probe due to a loss must be done using the same criteria of regular
+  // frames (PTO, etc.).
+  connectionState.pendingEvents.sendPing = true;
+
+  protocolState->probingInProgress = true;
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationProbingStarted(
+            quic::ServerMigrationProtocol::EXPLICIT,
+            connectionState.peerAddress);
+  }
+
+  // Update the WriteLooper.
+  return true;
 }
 
 } // namespace
@@ -615,6 +696,27 @@ void updateServerMigrationFrameOnPacketLoss(
     const QuicServerMigrationFrame& frame) {
   // Retransmit frame.
   connectionState.pendingEvents.frames.push_back(frame);
+}
+
+bool maybeStartServerMigrationProbing(
+    QuicClientConnectionState& connectionState,
+    PacketNum packetNumber) {
+  CHECK(connectionState.serverMigrationState.protocolState);
+
+  switch (connectionState.serverMigrationState.protocolState->type()) {
+    case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
+      return maybeStartExplicitServerMigrationProbing(
+          connectionState, packetNumber);
+    case QuicServerMigrationProtocolClientState::Type::
+        PoolOfAddressesClientState:
+      // TODO implement probing for PoA protocol
+      return false;
+    case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
+    case QuicServerMigrationProtocolClientState::Type::
+        SynchronizedSymmetricClientState:
+      return false;
+  }
+  folly::assume_unreachable();
 }
 
 } // namespace quic

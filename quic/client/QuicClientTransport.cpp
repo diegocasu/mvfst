@@ -1884,6 +1884,15 @@ void QuicClientTransport::maybeSendTransportKnobs() {
   }
 }
 
-void QuicClientTransport::onPacketMarkedLost(PacketNum packetNumber) {}
+void QuicClientTransport::onPacketMarkedLost(PacketNum packetNumber) {
+  if (!clientConn_->serverMigrationState.protocolState) {
+    return;
+  }
+  auto updateLooper =
+      maybeStartServerMigrationProbing(*clientConn_, packetNumber);
+  if (updateLooper) {
+    updateWriteLooper(true);
+  }
+}
 
 } // namespace quic
