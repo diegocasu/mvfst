@@ -92,7 +92,7 @@ void updateServerMigrationFrameOnPacketLoss(
  */
 bool maybeStartServerMigrationProbing(
     QuicClientConnectionState& connectionState,
-    PacketNum lostPacketNumber);
+    const PacketNum& lostPacketNumber);
 
 /**
  * Schedules a new probe during the server migration probing, if a previous
@@ -107,6 +107,6 @@ bool maybeStartServerMigrationProbing(
  */
 bool maybeScheduleServerMigrationProbe(
     QuicClientConnectionState& connectionState,
-    PacketNum lostPacketNumber);
+    const PacketNum& lostPacketNumber);
 
 } // namespace quic

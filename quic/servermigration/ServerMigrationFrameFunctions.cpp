@@ -519,11 +519,11 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
 
 bool maybeStartExplicitServerMigrationProbing(
     quic::QuicClientConnectionState& connectionState,
-    quic::PacketNum packetNumber) {
+    const quic::PacketNum& lostPacketNumber) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asExplicitClientState();
   if (protocolState->probingFinished || protocolState->probingInProgress ||
-      packetNumber <= protocolState->packetCarryingServerMigrationAck) {
+      lostPacketNumber <= protocolState->packetCarryingServerMigrationAck) {
     // Ignore the packet loss and do not update the WriteLooper.
     // If a probe is lost, its retransmission is not handled here.
     return false;
@@ -562,7 +562,7 @@ bool maybeStartExplicitServerMigrationProbing(
 
 bool maybeScheduleExplicitServerMigrationProbe(
     quic::QuicClientConnectionState& connectionState,
-    quic::PacketNum lostPacketNumber) {
+    const quic::PacketNum& lostPacketNumber) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asExplicitClientState();
   if (protocolState->probingFinished || !protocolState->probingInProgress ||
@@ -717,13 +717,13 @@ void updateServerMigrationFrameOnPacketLoss(
 
 bool maybeStartServerMigrationProbing(
     QuicClientConnectionState& connectionState,
-    PacketNum packetNumber) {
+    const PacketNum& lostPacketNumber) {
   CHECK(connectionState.serverMigrationState.protocolState);
 
   switch (connectionState.serverMigrationState.protocolState->type()) {
     case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
       return maybeStartExplicitServerMigrationProbing(
-          connectionState, packetNumber);
+          connectionState, lostPacketNumber);
     case QuicServerMigrationProtocolClientState::Type::
         PoolOfAddressesClientState:
       // TODO implement probing for PoA protocol
@@ -738,7 +738,7 @@ bool maybeStartServerMigrationProbing(
 
 bool maybeScheduleServerMigrationProbe(
     QuicClientConnectionState& connectionState,
-    PacketNum lostPacketNumber) {
+    const PacketNum& lostPacketNumber) {
   CHECK(connectionState.serverMigrationState.protocolState);
 
   switch (connectionState.serverMigrationState.protocolState->type()) {
