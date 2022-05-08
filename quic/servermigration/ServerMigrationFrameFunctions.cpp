@@ -642,6 +642,7 @@ void updateServerMigrationFrameOnPacketReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState);
+      //TODO add implementation for SERVER_MIGRATED
       return;
   }
   folly::assume_unreachable();
@@ -687,6 +688,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState);
+      //TODO add implementation for SERVER_MIGRATED
       return;
   }
   folly::assume_unreachable();
