@@ -522,7 +522,7 @@ bool maybeStartExplicitServerMigrationProbing(
     quic::PacketNum packetNumber) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asExplicitClientState();
-  if (protocolState->probingInProgress ||
+  if (protocolState->probingFinished || protocolState->probingInProgress ||
       packetNumber <= protocolState->packetCarryingServerMigrationAck) {
     // Ignore the packet loss and do not update the WriteLooper.
     // If a probe is lost, its retransmission is not handled here.
@@ -557,6 +557,23 @@ bool maybeStartExplicitServerMigrationProbing(
   }
 
   // Update the WriteLooper.
+  return true;
+}
+
+bool maybeScheduleExplicitServerMigrationProbe(
+    quic::QuicClientConnectionState& connectionState,
+    quic::PacketNum lostPacketNumber) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asExplicitClientState();
+  if (protocolState->probingFinished || !protocolState->probingInProgress ||
+      lostPacketNumber <= protocolState->packetCarryingServerMigrationAck ||
+      connectionState.pendingEvents.sendPing) {
+    // Do not schedule a probe and do not update the WriteLooper.
+    return false;
+  }
+
+  // Schedule a new probe and update the WriteLooper.
+  connectionState.pendingEvents.sendPing = true;
   return true;
 }
 
@@ -710,6 +727,27 @@ bool maybeStartServerMigrationProbing(
     case QuicServerMigrationProtocolClientState::Type::
         PoolOfAddressesClientState:
       // TODO implement probing for PoA protocol
+      return false;
+    case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
+    case QuicServerMigrationProtocolClientState::Type::
+        SynchronizedSymmetricClientState:
+      return false;
+  }
+  folly::assume_unreachable();
+}
+
+bool maybeScheduleServerMigrationProbe(
+    QuicClientConnectionState& connectionState,
+    PacketNum lostPacketNumber) {
+  CHECK(connectionState.serverMigrationState.protocolState);
+
+  switch (connectionState.serverMigrationState.protocolState->type()) {
+    case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
+      return maybeScheduleExplicitServerMigrationProbe(
+          connectionState, lostPacketNumber);
+    case QuicServerMigrationProtocolClientState::Type::
+        PoolOfAddressesClientState:
+      // TODO implement scheduling for PoA protocol
       return false;
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
     case QuicServerMigrationProtocolClientState::Type::

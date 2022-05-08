@@ -94,4 +94,19 @@ bool maybeStartServerMigrationProbing(
     QuicClientConnectionState& connectionState,
     PacketNum lostPacketNumber);
 
+/**
+ * Schedules a new probe during the server migration probing, if a previous
+ * probe has been marked as lost. It must be called only if a server migration
+ * protocol state has already been created.
+ * @param connectionState   the client connection state.
+ * @param lostPacketNumber  the packet number of the packet containing
+ *                          the probe marked as lost.
+ * @return                  true if the write looper must be updated in this
+ *                          iteration due to a probe scheduling, false if the
+ *                          write looper should not be updated at all.
+ */
+bool maybeScheduleServerMigrationProbe(
+    QuicClientConnectionState& connectionState,
+    PacketNum lostPacketNumber);
+
 } // namespace quic

@@ -87,6 +87,7 @@ void markPacketLoss(
     RegularQuicWritePacket& packet,
     bool processed) {
   QUIC_STATS(conn.statsCallback, onPacketLoss);
+  auto packetNumber = packet.header.getPacketSequenceNum();
   for (auto& packetFrame : packet.frames) {
     switch (packetFrame.type()) {
       case QuicWriteFrame::Type::MaxStreamDataFrame: {
@@ -213,14 +214,20 @@ void markPacketLoss(
         updateSimpleFrameOnPacketLoss(conn, frame);
         break;
       }
+      case QuicWriteFrame::Type::PingFrame:
+        // This case is useful only to reschedule a ping
+        // during a server migration probing.
+        if (conn.packetLossCallback) {
+          conn.packetLossCallback.value()->onPingFrameMarkedLost(packetNumber);
+        }
+        break;
       default:
         // ignore the rest of the frames.
         break;
     }
   }
   if (conn.packetLossCallback) {
-    conn.packetLossCallback.value()->onPacketMarkedLost(
-        packet.header.getPacketSequenceNum());
+    conn.packetLossCallback.value()->onPacketMarkedLost(packetNumber);
   }
 }
 } // namespace quic

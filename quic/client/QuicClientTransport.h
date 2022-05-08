@@ -213,6 +213,8 @@ class QuicClientTransport
 
   void onPacketMarkedLost(PacketNum packetNumber) override;
 
+  void onPingFrameMarkedLost(PacketNum packetNumber) override;
+
  protected:
   // From AsyncUDPSocket::ReadCallback
   void getReadBuffer(void** buf, size_t* len) noexcept override;

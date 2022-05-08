@@ -50,6 +50,7 @@ struct ExplicitClientState {
   // Packet number useful to detect a loss that triggers the migration probing.
   PacketNum packetCarryingServerMigrationAck;
   bool probingInProgress{false};
+  bool probingFinished{false};
 
   ExplicitClientState(
       QuicIPAddress migrationAddress,
@@ -62,7 +63,8 @@ struct ExplicitClientState {
     return migrationAddress == rhs.migrationAddress &&
         packetCarryingServerMigrationAck ==
         rhs.packetCarryingServerMigrationAck &&
-        probingInProgress == rhs.probingInProgress;
+        probingInProgress == rhs.probingInProgress &&
+        probingFinished == rhs.probingFinished;
   }
 
   bool operator!=(const ExplicitClientState& rhs) const {

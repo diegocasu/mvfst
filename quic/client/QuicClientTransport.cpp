@@ -1895,4 +1895,15 @@ void QuicClientTransport::onPacketMarkedLost(PacketNum packetNumber) {
   }
 }
 
+void QuicClientTransport::onPingFrameMarkedLost(PacketNum packetNumber) {
+  if (!clientConn_->serverMigrationState.protocolState) {
+    return;
+  }
+  auto updateLooper =
+      maybeScheduleServerMigrationProbe(*clientConn_, packetNumber);
+  if (updateLooper) {
+    updateWriteLooper(true);
+  }
+}
+
 } // namespace quic
