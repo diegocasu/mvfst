@@ -109,4 +109,17 @@ bool maybeScheduleServerMigrationProbe(
     QuicClientConnectionState& connectionState,
     const PacketNum& lostPacketNumber);
 
+/**
+ * Ends a server migration probing and starts a path validation, if a probing
+ * is ongoing. It must be called only if a server migration protocol state has
+ * already been created and a non-probing packet has been received.
+ * @param connectionState  the client connection state.
+ * @param peerAddress      the address from which the non-probing packet has
+ *                         been received. If it does not match the expected
+ *                         migration address, the method does nothing.
+ */
+void maybeEndServerMigrationProbing(
+    QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress);
+
 } // namespace quic

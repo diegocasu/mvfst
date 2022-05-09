@@ -577,6 +577,40 @@ bool maybeScheduleExplicitServerMigrationProbe(
   return true;
 }
 
+void maybeEndExplicitServerMigrationProbing(
+    quic::QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asExplicitClientState();
+  auto expectedPeerAddress = connectionState.peerAddress.getIPAddress().isV4()
+      ? protocolState->migrationAddress.getIPv4AddressAsSocketAddress()
+      : protocolState->migrationAddress.getIPv6AddressAsSocketAddress();
+
+  if (peerAddress != expectedPeerAddress || protocolState->probingFinished ||
+      !protocolState->probingInProgress) {
+    return;
+  }
+
+  // Stop the probing.
+  connectionState.pendingEvents.sendPing = false;
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = true;
+
+  // Start path validation. The retransmission of PATH_CHALLENGE frames
+  // is done automatically when a packet is marked as lost, so there is no need
+  // to manage it "manually" as happens with the PING frames used as probes.
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  connectionState.pendingEvents.pathChallenge =
+      quic::PathChallengeFrame(pathData);
+
+  // Set the anti-amplification limit for the non-validated path.
+  // This limit is automatically ignored after a path validation succeeds.
+  connectionState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          connectionState.udpSendPacketLen);
+}
+
 } // namespace
 
 namespace quic {
@@ -642,7 +676,7 @@ void updateServerMigrationFrameOnPacketReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState);
-      //TODO add implementation for SERVER_MIGRATED
+      // TODO add implementation for SERVER_MIGRATED
       return;
   }
   folly::assume_unreachable();
@@ -688,7 +722,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState);
-      //TODO add implementation for SERVER_MIGRATED
+      // TODO add implementation for SERVER_MIGRATED
       return;
   }
   folly::assume_unreachable();
@@ -759,4 +793,24 @@ bool maybeScheduleServerMigrationProbe(
   folly::assume_unreachable();
 }
 
+void maybeEndServerMigrationProbing(
+    QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
+  CHECK(connectionState.serverMigrationState.protocolState);
+
+  switch (connectionState.serverMigrationState.protocolState->type()) {
+    case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
+      maybeEndExplicitServerMigrationProbing(connectionState, peerAddress);
+      return;
+    case QuicServerMigrationProtocolClientState::Type::
+        PoolOfAddressesClientState:
+      // TODO end probing for PoA protocol
+      return;
+    case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
+    case QuicServerMigrationProtocolClientState::Type::
+        SynchronizedSymmetricClientState:
+      return;
+  }
+  folly::assume_unreachable();
+}
 } // namespace quic

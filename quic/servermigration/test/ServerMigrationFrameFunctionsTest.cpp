@@ -916,5 +916,56 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestScheduleExplicitServerMigratio
   EXPECT_TRUE(clientState.pendingEvents.sendPing);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbing) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  PacketNum serverMigrationAckPacketNumber = 1;
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  clientState.pendingEvents.sendPing = true;
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      clientState.peerAddress);
+  ASSERT_FALSE(protocolState->probingFinished);
+  ASSERT_TRUE(protocolState->probingInProgress);
+  ASSERT_TRUE(clientState.pendingEvents.sendPing);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  // Test end probing with peer address not matching the expected one.
+  folly::SocketAddress badPeerAddress("127.1.1.10", 12345);
+  ASSERT_NE(badPeerAddress, migrationAddress.getIPv4AddressAsSocketAddress());
+  maybeEndServerMigrationProbing(clientState, badPeerAddress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_TRUE(clientState.pendingEvents.sendPing);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+
+  // Test attempt to end probing when probing is already finished.
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = true;
+  maybeEndServerMigrationProbing(
+      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+  protocolState->probingInProgress = true;
+  protocolState->probingFinished = false;
+
+  // Test correct probing ending.
+  maybeEndServerMigrationProbing(
+      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_FALSE(clientState.pendingEvents.sendPing);
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
 } // namespace test
 } // namespace quic

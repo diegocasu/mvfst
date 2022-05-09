@@ -376,12 +376,14 @@ void QuicClientTransport::processPacketData(
 
   bool pktHasRetransmittableData = false;
   bool pktHasCryptoData = false;
+  bool isNonProbingPacket = false;
 
   for (auto& quicFrame : regularPacket.frames) {
     switch (quicFrame.type()) {
       case QuicFrame::Type::ReadAckFrame: {
         VLOG(10) << "Client received ack frame in packet=" << packetNum << " "
                  << *this;
+        isNonProbingPacket = true;
         ReadAckFrame& ackFrame = *quicFrame.asReadAckFrame();
         conn_->lastProcessedAckEvents.emplace_back(processAckFrame(
             *conn_,
@@ -466,6 +468,7 @@ void QuicClientTransport::processPacketData(
         VLOG(10) << "Client received reset stream=" << frame.streamId << " "
                  << *this;
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         auto streamId = frame.streamId;
         auto stream = conn_->streamManager->getStream(streamId);
         if (!stream) {
@@ -477,6 +480,7 @@ void QuicClientTransport::processPacketData(
       case QuicFrame::Type::ReadCryptoFrame: {
         pktHasRetransmittableData = true;
         pktHasCryptoData = true;
+        isNonProbingPacket = true;
         ReadCryptoFrame& cryptoFrame = *quicFrame.asReadCryptoFrame();
         VLOG(10) << "Client received crypto data offset=" << cryptoFrame.offset
                  << " len=" << cryptoFrame.data->computeChainDataLength()
@@ -496,6 +500,7 @@ void QuicClientTransport::processPacketData(
                  << *this;
         auto stream = conn_->streamManager->getStream(frame.streamId);
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         if (!stream) {
           VLOG(10) << "Could not find stream=" << frame.streamId << " "
                    << *conn_;
@@ -505,6 +510,7 @@ void QuicClientTransport::processPacketData(
         break;
       }
       case QuicFrame::Type::ReadNewTokenFrame: {
+        isNonProbingPacket = true;
         ReadNewTokenFrame& newTokenFrame = *quicFrame.asReadNewTokenFrame();
         std::string tokenStr =
             newTokenFrame.token->moveToFbString().toStdString();
@@ -520,6 +526,7 @@ void QuicClientTransport::processPacketData(
         VLOG(10) << "Client received max data offset="
                  << connWindowUpdate.maximumData << " " << *this;
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         handleConnWindowUpdate(*conn_, connWindowUpdate, packetNum);
         break;
       }
@@ -536,6 +543,7 @@ void QuicClientTransport::processPacketData(
               TransportErrorCode::STREAM_STATE_ERROR);
         }
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         auto stream =
             conn_->streamManager->getStream(streamWindowUpdate.streamId);
         if (stream) {
@@ -547,6 +555,7 @@ void QuicClientTransport::processPacketData(
       case QuicFrame::Type::DataBlockedFrame: {
         VLOG(10) << "Client received blocked " << *this;
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         handleConnBlocked(*conn_);
         break;
       }
@@ -557,6 +566,7 @@ void QuicClientTransport::processPacketData(
         VLOG(10) << "Client received blocked stream=" << blocked.streamId << " "
                  << *this;
         pktHasRetransmittableData = true;
+        isNonProbingPacket = true;
         auto stream = conn_->streamManager->getStream(blocked.streamId);
         if (stream) {
           handleStreamBlocked(*stream);
@@ -570,9 +580,11 @@ void QuicClientTransport::processPacketData(
         VLOG(10) << "Client received stream blocked limit="
                  << blocked.streamLimit << " " << *this;
         // TODO implement handler for it
+        isNonProbingPacket = true;
         break;
       }
       case QuicFrame::Type::ConnectionCloseFrame: {
+        isNonProbingPacket = true;
         ConnectionCloseFrame& connFrame = *quicFrame.asConnectionCloseFrame();
         auto errMsg = folly::to<std::string>(
             "Client closed by peer reason=", connFrame.reasonPhrase);
@@ -589,6 +601,7 @@ void QuicClientTransport::processPacketData(
         break;
       }
       case QuicFrame::Type::PingFrame:
+        isNonProbingPacket = true;
         // Ping isn't retransmittable. But we would like to ack them early.
         // So, make Ping frames count towards ack policy
         pktHasRetransmittableData = true;
@@ -601,14 +614,15 @@ void QuicClientTransport::processPacketData(
         pktHasRetransmittableData = true;
         if (simpleFrame.type() ==
             QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+          isNonProbingPacket = true;
           updateServerMigrationFrameOnPacketReceived(
               *clientConn_,
               *simpleFrame.asQuicServerMigrationFrame(),
               packetNum);
           break;
         }
-        updateSimpleFrameOnPacketReceived(
-            *conn_, simpleFrame, packetNum, false);
+        isNonProbingPacket |= updateSimpleFrameOnPacketReceived(
+            *conn_, simpleFrame, packetNum, peer != conn_->peerAddress);
         break;
       }
       case QuicFrame::Type::DatagramFrame: {
@@ -630,6 +644,29 @@ void QuicClientTransport::processPacketData(
   if (handshakeLayer->getPhase() == ClientHandshake::Phase::Established &&
       hasInitialOrHandshakeCiphers(*conn_)) {
     handshakeConfirmed(*conn_);
+  }
+
+  if (clientConn_->serverMigrationState.protocolState &&
+      clientConn_->serverMigrationState.migrationInProgress &&
+      isNonProbingPacket) {
+    // This packet could be the first one sent by the server after a migration,
+    // so check if an ongoing probing, performed as part of the Explicit or PoA
+    // protocol, should end. Note that the probing is stopped upon the reception
+    // of the first packet from the new server address, regardless of whether it
+    // contains an acknowledgement for one of the probes or not. This ensures
+    // that a path validation is started immediately even if packets from the
+    // new address arrive out of order, or there are losses, or the server
+    // maliciously never sends an acknowledgement for a probe.
+    // Note also that (conn_->peerAddress == peer) if the Explicit or PoA
+    // probing is already in progress.
+    maybeEndServerMigrationProbing(*clientConn_, peer);
+  }
+  if (conn_->peerAddress != peer && isNonProbingPacket) {
+    // Same reasoning of the previous case, but this time related to the
+    // Symmetric and Synchronized Symmetric protocols. Here, the first packet
+    // from the new server address could not contain a SERVER_MIGRATED frame.
+
+    // TODO implement migration for Symmetric and Synchronized Symmetric
   }
 
   // Try reading bytes off of crypto, and performing a handshake.
