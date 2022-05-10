@@ -842,4 +842,28 @@ void endServerMigration(
   }
 }
 
+void endServerMigration(
+    QuicServerConnectionState& connectionState,
+    const PacketNum& packetNumber) {
+  CHECK(connectionState.serverMigrationState.protocolState);
+  connectionState.serverMigrationState.migrationInProgress = false;
+
+  // Clear the protocol state, so that future migrations are possible.
+  connectionState.serverMigrationState.protocolState.clear();
+
+  // Update the largest processed server migration acknowledgement to
+  // record the one that ended the migration.
+  if (packetNumber > connectionState.serverMigrationState
+                         .largestProcessedPacketNumber.value()) {
+    connectionState.serverMigrationState.largestProcessedPacketNumber =
+        packetNumber;
+  }
+
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationCompleted(
+            connectionState.serverMigrationState.originalConnectionId.value());
+  }
+}
+
 } // namespace quic

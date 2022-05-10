@@ -1037,8 +1037,17 @@ void onServerReadDataFromOpen(
                       // Call handshakeConfirmed outside of the packet
                       // processing loop to avoid a re-entrancy.
                       handshakeConfirmedThisLoop = true;
+                      break;
                     }
-                    break;
+                    if (frame.asPathResponseFrame() &&
+                        conn.serverMigrationState.protocolState &&
+                        conn.serverMigrationState.migrationInProgress) {
+                      // Declare the end of the migration upon the reception
+                      // of an acknowledgement for a PATH_RESPONSE sent while
+                      // the migration was in progress.
+                      endServerMigration(conn, packetNum);
+                      break;
+                    }
                   }
                   default: {
                     break;

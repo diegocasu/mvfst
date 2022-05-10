@@ -996,5 +996,24 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) 
   EXPECT_EQ(clientState.serverMigrationState.largestProcessedPacketNumber, 1);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationServerSide) {
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  serverState.serverMigrationState.migrationInProgress = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber = 0;
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationCompleted(_)).Times(Exactly(1));
+  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+
+  ASSERT_TRUE(serverState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(serverState.serverMigrationState.protocolState);
+  ASSERT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 0);
+
+  endServerMigration(serverState, 1);
+  EXPECT_FALSE(serverState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(serverState.serverMigrationState.protocolState);
+  EXPECT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 1);
+}
+
 } // namespace test
 } // namespace quic

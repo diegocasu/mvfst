@@ -134,4 +134,16 @@ void endServerMigration(
     QuicClientConnectionState& connectionState,
     const PacketNum& packetNumber);
 
+/**
+ * Ends a server migration, resetting the migration state. It must be called
+ * only if a server migration protocol state has already been created and the
+ * path validation has been completed.
+ * @param connectionState  the server connection state.
+ * @param packetNumber     the packet number of the packet carrying the
+ *                         acknowledgement for the PATH_RESPONSE frame.
+ */
+void endServerMigration(
+    QuicServerConnectionState& connectionState,
+    const PacketNum& packetNumber);
+
 } // namespace quic

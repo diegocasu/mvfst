@@ -164,7 +164,9 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
 
     // Largest packet number processed by the server migration layer.
     // This number refers only to packets containing acknowledgements
-    // for server migration frames, not to all the packets.
+    // for server migration frames, not to all the packets. The only exception
+    // is represented by packets containing acknowledgements for PATH_RESPONSE
+    // frames, which are included in this count to record a migration end.
     folly::Optional<PacketNum> largestProcessedPacketNumber;
 
     // Flag telling whether the transport is currently involved in a
