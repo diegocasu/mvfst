@@ -668,6 +668,12 @@ void QuicClientTransport::processPacketData(
 
     // TODO implement migration for Symmetric and Synchronized Symmetric
   }
+  if (clientConn_->serverMigrationState.protocolState &&
+      clientConn_->serverMigrationState.migrationInProgress &&
+      conn_->pathValidationSucceededInThisLoop) {
+    conn_->pathValidationSucceededInThisLoop = false;
+    endServerMigration(*clientConn_, packetNum);
+  }
 
   // Try reading bytes off of crypto, and performing a handshake.
   auto cryptoData = readDataFromCryptoStream(

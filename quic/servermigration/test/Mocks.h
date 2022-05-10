@@ -76,6 +76,14 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
       onServerMigrationReady,
       (ConnectionId serverConnectionId),
       (noexcept, override));
+
+  MOCK_METHOD(void, onServerMigrationCompleted, (), (noexcept, override));
+
+  MOCK_METHOD(
+      void,
+      onServerMigrationCompleted,
+      (ConnectionId serverConnectionId),
+      (noexcept, override));
 };
 
 } // namespace quic

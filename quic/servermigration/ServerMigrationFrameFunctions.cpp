@@ -813,4 +813,33 @@ void maybeEndServerMigrationProbing(
   }
   folly::assume_unreachable();
 }
+
+void endServerMigration(
+    QuicClientConnectionState& connectionState,
+    const PacketNum& packetNumber) {
+  CHECK(connectionState.serverMigrationState.protocolState);
+  connectionState.serverMigrationState.migrationInProgress = false;
+  connectionState.serverMigrationState.numberOfMigrations += 1;
+
+  // Clear the protocol state, so that future migrations are possible.
+  connectionState.serverMigrationState.protocolState.clear();
+
+  // Removing the path limiter is not strictly necessary, since it is
+  // ignored once the validation succeeded, but do it for clarity.
+  connectionState.pathValidationLimiter.reset();
+
+  // Update the largest processed server migration packet to
+  // record the one that ended the migration.
+  if (packetNumber > connectionState.serverMigrationState
+                         .largestProcessedPacketNumber.value()) {
+    connectionState.serverMigrationState.largestProcessedPacketNumber =
+        packetNumber;
+  }
+
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationCompleted();
+  }
+}
+
 } // namespace quic

@@ -967,5 +967,34 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   EXPECT_TRUE(clientState.pathValidationLimiter);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  PacketNum serverMigrationAckPacketNumber = 1;
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+  clientState.serverMigrationState.migrationInProgress = true;
+  clientState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          clientState.udpSendPacketLen);
+  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationCompleted()).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+
+  ASSERT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
+  ASSERT_TRUE(clientState.pathValidationLimiter);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_EQ(clientState.serverMigrationState.largestProcessedPacketNumber, 0);
+
+  endServerMigration(clientState, 1);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+  EXPECT_EQ(clientState.serverMigrationState.numberOfMigrations, 1);
+  EXPECT_EQ(clientState.serverMigrationState.largestProcessedPacketNumber, 1);
+}
+
 } // namespace test
 } // namespace quic

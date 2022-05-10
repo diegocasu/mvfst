@@ -122,4 +122,16 @@ void maybeEndServerMigrationProbing(
     QuicClientConnectionState& connectionState,
     const folly::SocketAddress& peerAddress);
 
+/**
+ * Ends a server migration, resetting the migration state. It must be called
+ * only if a server migration protocol state has already been created and a path
+ * validation involving a new server address has been successfully completed.
+ * @param connectionState  the client connection state.
+ * @param packetNumber     the packet number of the packet carrying the
+ *                         PATH_RESPONSE frame.
+ */
+void endServerMigration(
+    QuicClientConnectionState& connectionState,
+    const PacketNum& packetNumber);
+
 } // namespace quic

@@ -859,6 +859,11 @@ struct QuicConnectionStateBase : public folly::DelayedDestruction {
   // At the moment, it is used only by QuicClientTransport as part of the
   // server migration extension.
   folly::Optional<std::shared_ptr<QuicPacketLossCallback>> packetLossCallback;
+
+  // Flag used to check if a correct PATH_RESPONSE was processed in this
+  // execution loop. At the moment, it is used only by QuicClientTransport as
+  // part of the server migration extension to check if the migration succeeded.
+  bool pathValidationSucceededInThisLoop{false};
 };
 
 std::ostream& operator<<(std::ostream& os, const QuicConnectionStateBase& st);

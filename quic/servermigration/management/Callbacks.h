@@ -156,6 +156,21 @@ class ServerMigrationEventCallback {
    */
   virtual void onServerMigrationReady(
       ConnectionId /*serverConnectionId*/) noexcept {}
+
+  /**
+   * Called when a server migration succeeds.
+   * It should be implemented only on the client side.
+   */
+  virtual void onServerMigrationCompleted() noexcept {};
+
+  /**
+   * Called when a server migration succeeds.
+   * It should be implemented only on the server side.
+   * @param serverConnectionId  the connection ID of the QuicServerTransport
+   *                            instance.
+   */
+  virtual void onServerMigrationCompleted(
+      ConnectionId /*serverConnectionId*/) noexcept {};
 };
 
 } // namespace quic
