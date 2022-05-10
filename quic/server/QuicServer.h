@@ -65,6 +65,16 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
    */
   void pauseRead();
 
+  /**
+   * Resume reading from the listening socket the server workers are bound to
+   */
+  void resumeRead();
+
+  /**
+   * Close the listening socket the server workers are bound to
+   */
+  void closeSocket();
+
   /*
    * Take in a function to supply overrides for transport parameters, given
    * the client address as input. This can be useful if we are running
@@ -427,6 +437,14 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
   void onImminentServerMigration(
       const ServerMigrationProtocol& protocol,
       const folly::Optional<QuicIPAddress>& migrationAddress);
+
+  /**
+   * Notifies all the transports to bind to a new address due to a migration
+   * and to start again accepting new connections.
+   * @param newAddress  the new address of the server. It must be of the same
+   *                    family of the one being replaced.
+   */
+  void onNetworkSwitch(const folly::SocketAddress& newAddress);
 
  private:
   QuicServer();

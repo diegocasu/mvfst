@@ -169,6 +169,16 @@ void QuicServerWorker::pauseRead() {
   socket_->pauseRead();
 }
 
+void QuicServerWorker::resumeRead() {
+  CHECK(socket_);
+  socket_->resumeRead(this);
+}
+
+void QuicServerWorker::closeSocket() {
+  CHECK(socket_);
+  socket_->close();
+}
+
 int QuicServerWorker::getFD() {
   CHECK(socket_);
   return socket_->getNetworkSocket().toFd();
@@ -1516,6 +1526,13 @@ void QuicServerWorker::onImminentServerMigration(
         QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
         "Server performed a migration"));
     sourceAddressMapIt = nextSourceAddressMapIt;
+  }
+}
+
+void QuicServerWorker::onNetworkSwitch() {
+  for (auto& transport : connectionIdMap_) {
+    auto newSocket = makeSocket(getEventBase());
+    transport.second->onNetworkSwitch(std::move(newSocket));
   }
 }
 

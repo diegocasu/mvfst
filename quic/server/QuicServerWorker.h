@@ -181,6 +181,16 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   void pauseRead();
 
   /**
+   * Resume reading from the listening socket this worker is bound to
+   */
+  void resumeRead();
+
+  /**
+   * Close the listening socket this worker is bound to
+   */
+  void closeSocket();
+
+  /**
    * Returns listening address of this server
    */
   const folly::SocketAddress& getAddress() const;
@@ -510,6 +520,14 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   void onImminentServerMigration(
       const ServerMigrationProtocol& protocol,
       const folly::Optional<QuicIPAddress>& migrationAddress);
+
+  /**
+   * Notifies all the transports managed by the worker to bind to a
+   * new address due to a migration.
+   * @param newAddress  the new address of the server. It must be of the same
+   *                    family of the one being replaced.
+   */
+  void onNetworkSwitch();
 
  private:
   /**

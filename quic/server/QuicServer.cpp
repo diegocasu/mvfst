@@ -389,6 +389,14 @@ void QuicServer::pauseRead() {
   runOnAllWorkersSync([&](auto worker) mutable { worker->pauseRead(); });
 }
 
+void QuicServer::resumeRead() {
+  runOnAllWorkersSync([&](auto worker) mutable { worker->resumeRead(); });
+}
+
+void QuicServer::closeSocket() {
+  runOnAllWorkersSync([&](auto worker) mutable { worker->closeSocket(); });
+}
+
 void QuicServer::routeDataToWorker(
     const folly::SocketAddress& client,
     RoutingData&& routingData,
@@ -835,6 +843,28 @@ void QuicServer::onImminentServerMigration(
   runOnAllWorkers([protocol, migrationAddress](auto worker) mutable {
     worker->onImminentServerMigration(protocol, migrationAddress);
   });
+}
+
+void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
+  auto currentAddress = getAddress();
+  if (currentAddress.getIPAddress().version() !=
+      newAddress.getIPAddress().version()) {
+    LOG(ERROR) << "Impossible to change the address due to IP version mismatch";
+    return;
+  }
+  pauseRead();
+  closeSocket();
+
+  // TODO test server migration together with CCP and socket takeover.
+  auto evbs = getWorkerEvbs();
+  bindWorkersToSocket(newAddress, evbs);
+  runOnAllWorkersSync([&](auto worker) mutable {
+    worker->onNetworkSwitch();
+  });
+
+  resumeRead();
+  // Start again to accept new connections.
+  rejectNewConnections([]() { return false; });
 }
 
 } // namespace quic
