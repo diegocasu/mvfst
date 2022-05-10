@@ -165,6 +165,13 @@ class QuicServerTransport
       const folly::Optional<QuicIPAddress>& migrationAddress);
 
   /**
+   * Notifies the transport to use a new socket due to a migration.
+   * @param newSocket  the new socket.
+   */
+  void onNetworkSwitch(
+      std::unique_ptr<folly::AsyncUDPSocket> newSocket) override;
+
+  /**
    * Sets the callback to invoke when the server migration management
    * interface should be informed about the change of a client's state.
    * @param callback  the callback.

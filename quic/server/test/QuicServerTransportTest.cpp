@@ -2285,6 +2285,125 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetr
       server->getNonConstConn().serverMigrationState.migrationInProgress);
 }
 
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchErrors) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(2))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      })
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+  server->setServerMigrationEventCallback(&callback);
+
+  // Test with a null socket.
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+  server->onNetworkSwitch(nullptr);
+  server->getNonConstConn().serverMigrationState.protocolState.clear();
+
+  // Test without a protocol state.
+  ASSERT_FALSE(server->getConn().serverMigrationState.protocolState);
+  server->onNetworkSwitch(std::move(newSocket));
+}
+
+TEST_F(QuicServerTransportTest, TestExplicitProtocolOnNetworkSwitch) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(&callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      ExplicitServerState(QuicIPAddress(newAddress));
+
+  ASSERT_NE(server->getSocket().address(), newAddress);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+  server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_EQ(server->getSocket().address(), newAddress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+}
+
+TEST_F(QuicServerTransportTest, TestPoolOfAddressesProtocolOnNetworkSwitch) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(&callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      PoolOfAddressesServerState();
+
+  ASSERT_NE(server->getSocket().address(), newAddress);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+  server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_EQ(server->getSocket().address(), newAddress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+}
+
+TEST_F(QuicServerTransportTest, TestSymmetricProtocolOnNetworkSwitch) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(&callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+
+  ASSERT_NE(server->getSocket().address(), newAddress);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+  server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_EQ(server->getSocket().address(), newAddress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_EQ(server->getConn().pendingEvents.frames.size(), 1);
+  EXPECT_EQ(
+      *server->getConn()
+           .pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigratedFrame(),
+      ServerMigratedFrame());
+}
+
+TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolOnNetworkSwitch) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(&callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+
+  ASSERT_NE(server->getSocket().address(), newAddress);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+  server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_EQ(server->getSocket().address(), newAddress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_EQ(server->getConn().pendingEvents.frames.size(), 1);
+  EXPECT_EQ(
+      *server->getConn()
+           .pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigratedFrame(),
+      ServerMigratedFrame());
+}
+
 class QuicServerTransportAllowMigrationTest
     : public QuicServerTransportTest,
       public WithParamInterface<MigrationParam> {

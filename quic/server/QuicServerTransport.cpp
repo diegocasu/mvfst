@@ -432,6 +432,56 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
   sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(QuicIPAddress()));
 }
 
+void QuicServerTransport::onNetworkSwitch(
+    std::unique_ptr<folly::AsyncUDPSocket> newSocket) {
+  auto invokeFailureCallbackAndClose = [this](
+                                           const ServerMigrationError& error,
+                                           const std::string& errorMsg) {
+    // The value of the server CID is checked because the lambda could be
+    // called before the handshake has been finished and the CID derived.
+    if (serverConn_->serverMigrationState.serverMigrationEventCallback &&
+        serverConn_->serverMigrationState.originalConnectionId) {
+      serverConn_->serverMigrationState.serverMigrationEventCallback
+          ->onServerMigrationFailed(
+              serverConn_->serverMigrationState.originalConnectionId.value(),
+              error);
+    }
+    closeImpl(
+        QuicError(
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+        false);
+  };
+  if (!newSocket) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_ADDRESS,
+        "Attempt to change the transport socket with a null socket");
+    return;
+  }
+  if (!serverConn_->serverMigrationState.protocolState) {
+    invokeFailureCallbackAndClose(
+        ServerMigrationError::INVALID_STATE,
+        "Attempt to change the transport socket without first notifying a migration");
+    return;
+  }
+  auto oldSocket = std::move(socket_);
+  oldSocket->pauseRead();
+  oldSocket->close();
+  socket_ = std::move(newSocket);
+
+  switch (serverConn_->serverMigrationState.protocolState->type()) {
+    case QuicServerMigrationProtocolServerState::Type::ExplicitServerState:
+    case QuicServerMigrationProtocolServerState::Type::
+        PoolOfAddressesServerState:
+      return;
+    case QuicServerMigrationProtocolServerState::Type::SymmetricServerState:
+    case QuicServerMigrationProtocolServerState::Type::
+        SynchronizedSymmetricServerState:
+      sendServerMigrationFrame(*serverConn_, ServerMigratedFrame());
+      return;
+  }
+  folly::assume_unreachable();
+}
+
 bool QuicServerTransport::setClientStateUpdateCallback(
     ClientStateUpdateCallback* callback) {
   if (callback == nullptr) {
