@@ -857,10 +857,9 @@ void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
 
   // TODO test server migration together with CCP and socket takeover.
   auto evbs = getWorkerEvbs();
+  initialized_ = false;
   bindWorkersToSocket(newAddress, evbs);
-  runOnAllWorkersSync([&](auto worker) mutable {
-    worker->onNetworkSwitch();
-  });
+  runOnAllWorkersSync([&](auto worker) mutable { worker->onNetworkSwitch(); });
 
   resumeRead();
   // Start again to accept new connections.
