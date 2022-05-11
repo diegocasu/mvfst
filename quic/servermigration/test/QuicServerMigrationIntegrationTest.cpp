@@ -78,8 +78,7 @@ class QuicServerMigrationIntegrationTestClient
     EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
     if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
       auto errorCode = *error.code.asLocalErrorCode();
-      EXPECT_NE(errorCode, LocalErrorCode::INTERNAL_ERROR);
-      EXPECT_NE(errorCode, LocalErrorCode::TRANSPORT_ERROR);
+      EXPECT_EQ(errorCode, LocalErrorCode::SHUTTING_DOWN);
     }
     startDone_.post();
   }
@@ -250,8 +249,7 @@ class QuicServerMigrationIntegrationTestServer {
       EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
       if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
         auto errorCode = *error.code.asLocalErrorCode();
-        EXPECT_NE(errorCode, LocalErrorCode::INTERNAL_ERROR);
-        EXPECT_NE(errorCode, LocalErrorCode::TRANSPORT_ERROR);
+        EXPECT_EQ(errorCode, LocalErrorCode::SHUTTING_DOWN);
       }
     }
 
