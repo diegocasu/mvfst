@@ -990,7 +990,7 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
   EXPECT_TRUE(supportedProtocols.empty());
   EXPECT_FALSE(client->allowServerMigration(supportedProtocols));
   EXPECT_FALSE(client->getConn().serverMigrationState.negotiator);
-  EXPECT_FALSE(client->getConn().packetLossCallback.has_value());
+  EXPECT_FALSE(client->getConn().probeTimeoutCallback.has_value());
 
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
@@ -999,7 +999,7 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
       client->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
-  EXPECT_TRUE(client->getConn().packetLossCallback.has_value());
+  EXPECT_TRUE(client->getConn().probeTimeoutCallback.has_value());
 
   supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
@@ -1008,7 +1008,7 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
       client->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
-  EXPECT_TRUE(client->getConn().packetLossCallback.has_value());
+  EXPECT_TRUE(client->getConn().probeTimeoutCallback.has_value());
 
   std::unordered_set<ServerMigrationProtocol> emptyProtocols;
   EXPECT_FALSE(client->allowServerMigration(emptyProtocols));
@@ -1017,7 +1017,7 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
       client->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
-  EXPECT_TRUE(client->getConn().packetLossCallback.has_value());
+  EXPECT_TRUE(client->getConn().probeTimeoutCallback.has_value());
 
   client->closeNow(folly::none);
 }

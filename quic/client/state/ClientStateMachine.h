@@ -47,22 +47,14 @@ struct PoolOfAddressesClientState {
 
 struct ExplicitClientState {
   QuicIPAddress migrationAddress;
-  // Packet number useful to detect a loss that triggers the migration probing.
-  PacketNum packetCarryingServerMigrationAck;
   bool probingInProgress{false};
   bool probingFinished{false};
 
-  ExplicitClientState(
-      QuicIPAddress migrationAddress,
-      PacketNum packetCarryingServerMigrationAck)
-      : migrationAddress(std::move(migrationAddress)),
-        packetCarryingServerMigrationAck(
-            std::move(packetCarryingServerMigrationAck)) {}
+  ExplicitClientState(QuicIPAddress migrationAddress)
+      : migrationAddress(std::move(migrationAddress)) {}
 
   bool operator==(const ExplicitClientState& rhs) const {
     return migrationAddress == rhs.migrationAddress &&
-        packetCarryingServerMigrationAck ==
-        rhs.packetCarryingServerMigrationAck &&
         probingInProgress == rhs.probingInProgress &&
         probingFinished == rhs.probingFinished;
   }

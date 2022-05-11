@@ -434,10 +434,7 @@ void handleExplicitServerMigrationFrame(
 
   if (!connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState =
-        quic::ExplicitClientState(
-            frame.address,
-            quic::getNextPacketNum(
-                connectionState, quic::PacketNumberSpace::AppData));
+        quic::ExplicitClientState(frame.address);
     connectionState.serverMigrationState.migrationInProgress = true;
     if (connectionState.serverMigrationState.serverMigrationEventCallback) {
       connectionState.serverMigrationState.serverMigrationEventCallback
@@ -517,20 +514,19 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
   }
 }
 
-bool maybeStartExplicitServerMigrationProbing(
-    quic::QuicClientConnectionState& connectionState,
-    const quic::PacketNum& lostPacketNumber) {
+void maybeUpdateExplicitServerMigrationProbing(
+    quic::QuicClientConnectionState& connectionState) {
   auto protocolState = connectionState.serverMigrationState.protocolState
                            ->asExplicitClientState();
-  if (protocolState->probingFinished || protocolState->probingInProgress ||
-      lostPacketNumber <= protocolState->packetCarryingServerMigrationAck) {
-    // Ignore the packet loss and do not update the WriteLooper.
-    // If a probe is lost, its retransmission is not handled here.
-    return false;
+  if (protocolState->probingFinished || protocolState->probingInProgress) {
+    // If the probing has finished, there is nothing to do. If the probing
+    // is in progress, the scheduling of the next probe is done directly by
+    // the loss functions, so there is nothing to do as well.
+    return;
   }
 
-  // The packet declared lost was sent after the packet carrying the
-  // SERVER_MIGRATION acknowledgement, so start probing the new server address.
+  // A probe timeout has been triggered after sending an acknowledgement for
+  // a SERVER_MIGRATION frame. Then, start probing the new server address.
   auto congestionRttState = moveCurrentCongestionAndRttState(connectionState);
   connectionState.serverMigrationState.previousCongestionAndRttStates
       .emplace_back(std::move(congestionRttState));
@@ -540,41 +536,15 @@ bool maybeStartExplicitServerMigrationProbing(
       connectionState.peerAddress.getIPAddress().isV4()
       ? protocolState->migrationAddress.getIPv4AddressAsSocketAddress()
       : protocolState->migrationAddress.getIPv6AddressAsSocketAddress();
-
-  // The ping is not scheduled using the sendPing() method offered by
-  // QuicTransportBase, because the latter requires to pass a timeout value
-  // for each invocation, while here the possible retransmissions of the
-  // probe due to a loss must be done using the same criteria of regular
-  // frames (PTO, etc.).
-  connectionState.pendingEvents.sendPing = true;
-
   protocolState->probingInProgress = true;
+
   if (connectionState.serverMigrationState.serverMigrationEventCallback) {
     connectionState.serverMigrationState.serverMigrationEventCallback
         ->onServerMigrationProbingStarted(
             quic::ServerMigrationProtocol::EXPLICIT,
             connectionState.peerAddress);
   }
-
-  // Update the WriteLooper.
-  return true;
-}
-
-bool maybeScheduleExplicitServerMigrationProbe(
-    quic::QuicClientConnectionState& connectionState,
-    const quic::PacketNum& lostPacketNumber) {
-  auto protocolState = connectionState.serverMigrationState.protocolState
-                           ->asExplicitClientState();
-  if (protocolState->probingFinished || !protocolState->probingInProgress ||
-      lostPacketNumber <= protocolState->packetCarryingServerMigrationAck ||
-      connectionState.pendingEvents.sendPing) {
-    // Do not schedule a probe and do not update the WriteLooper.
-    return false;
-  }
-
-  // Schedule a new probe and update the WriteLooper.
-  connectionState.pendingEvents.sendPing = true;
-  return true;
+  return;
 }
 
 void maybeEndExplicitServerMigrationProbing(
@@ -592,13 +562,11 @@ void maybeEndExplicitServerMigrationProbing(
   }
 
   // Stop the probing.
-  connectionState.pendingEvents.sendPing = false;
   protocolState->probingInProgress = false;
   protocolState->probingFinished = true;
 
   // Start path validation. The retransmission of PATH_CHALLENGE frames
-  // is done automatically when a packet is marked as lost, so there is no need
-  // to manage it "manually" as happens with the PING frames used as probes.
+  // is done automatically when a packet is marked as lost.
   uint64_t pathData;
   folly::Random::secureRandom(&pathData, sizeof(pathData));
   connectionState.pendingEvents.pathChallenge =
@@ -751,44 +719,22 @@ void updateServerMigrationFrameOnPacketLoss(
   connectionState.pendingEvents.frames.push_back(frame);
 }
 
-bool maybeStartServerMigrationProbing(
-    QuicClientConnectionState& connectionState,
-    const PacketNum& lostPacketNumber) {
+void maybeUpdateServerMigrationProbing(
+    QuicClientConnectionState& connectionState) {
   CHECK(connectionState.serverMigrationState.protocolState);
 
   switch (connectionState.serverMigrationState.protocolState->type()) {
     case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
-      return maybeStartExplicitServerMigrationProbing(
-          connectionState, lostPacketNumber);
+      maybeUpdateExplicitServerMigrationProbing(connectionState);
+      return;
     case QuicServerMigrationProtocolClientState::Type::
         PoolOfAddressesClientState:
       // TODO implement probing for PoA protocol
-      return false;
+      return;
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
     case QuicServerMigrationProtocolClientState::Type::
         SynchronizedSymmetricClientState:
-      return false;
-  }
-  folly::assume_unreachable();
-}
-
-bool maybeScheduleServerMigrationProbe(
-    QuicClientConnectionState& connectionState,
-    const PacketNum& lostPacketNumber) {
-  CHECK(connectionState.serverMigrationState.protocolState);
-
-  switch (connectionState.serverMigrationState.protocolState->type()) {
-    case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
-      return maybeScheduleExplicitServerMigrationProbe(
-          connectionState, lostPacketNumber);
-    case QuicServerMigrationProtocolClientState::Type::
-        PoolOfAddressesClientState:
-      // TODO implement scheduling for PoA protocol
-      return false;
-    case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
-    case QuicServerMigrationProtocolClientState::Type::
-        SynchronizedSymmetricClientState:
-      return false;
+      return;
   }
   folly::assume_unreachable();
 }

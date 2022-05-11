@@ -1847,7 +1847,7 @@ bool QuicClientTransport::allowServerMigration(
   }
   clientConn_->serverMigrationState.negotiator =
       QuicServerMigrationNegotiatorClient(supportedProtocols);
-  clientConn_->packetLossCallback = shared_from_this();
+  clientConn_->probeTimeoutCallback = shared_from_this();
   return true;
 }
 
@@ -1927,25 +1927,9 @@ void QuicClientTransport::maybeSendTransportKnobs() {
   }
 }
 
-void QuicClientTransport::onPacketMarkedLost(PacketNum packetNumber) {
-  if (!clientConn_->serverMigrationState.protocolState) {
-    return;
-  }
-  auto updateLooper =
-      maybeStartServerMigrationProbing(*clientConn_, packetNumber);
-  if (updateLooper) {
-    updateWriteLooper(true);
-  }
-}
-
-void QuicClientTransport::onPingFrameMarkedLost(PacketNum packetNumber) {
-  if (!clientConn_->serverMigrationState.protocolState) {
-    return;
-  }
-  auto updateLooper =
-      maybeScheduleServerMigrationProbe(*clientConn_, packetNumber);
-  if (updateLooper) {
-    updateWriteLooper(true);
+void QuicClientTransport::onProbeTimeout() {
+  if (clientConn_->serverMigrationState.protocolState) {
+    maybeUpdateServerMigrationProbing(*clientConn_);
   }
 }
 

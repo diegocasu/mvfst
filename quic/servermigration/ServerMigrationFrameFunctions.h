@@ -81,33 +81,13 @@ void updateServerMigrationFrameOnPacketLoss(
     const QuicServerMigrationFrame& frame);
 
 /**
- * Starts probing a new server address, if the notified packet loss should be
- * interpreted as a server migration event. It must be called only if a server
- * migration protocol state has already been created.
- * @param connectionState   the client connection state.
- * @param lostPacketNumber  the packet number of the packet marked as lost.
- * @return                  true if the write looper must be updated in this
- *                          iteration due to a probe scheduling, false if the
- *                          write looper should not be updated at all.
+ * Updates the server migration probing state on a probe timeout event.
+ * It must be called only if a server migration protocol state has
+ * already been created.
+ * @param connectionState  the client connection state.
  */
-bool maybeStartServerMigrationProbing(
-    QuicClientConnectionState& connectionState,
-    const PacketNum& lostPacketNumber);
-
-/**
- * Schedules a new probe during the server migration probing, if a previous
- * probe has been marked as lost. It must be called only if a server migration
- * protocol state has already been created.
- * @param connectionState   the client connection state.
- * @param lostPacketNumber  the packet number of the packet containing
- *                          the probe marked as lost.
- * @return                  true if the write looper must be updated in this
- *                          iteration due to a probe scheduling, false if the
- *                          write looper should not be updated at all.
- */
-bool maybeScheduleServerMigrationProbe(
-    QuicClientConnectionState& connectionState,
-    const PacketNum& lostPacketNumber);
+void maybeUpdateServerMigrationProbing(
+    QuicClientConnectionState& connectionState);
 
 /**
  * Ends a server migration probing and starts a path validation, if a probing
@@ -116,7 +96,7 @@ bool maybeScheduleServerMigrationProbe(
  * @param connectionState  the client connection state.
  * @param peerAddress      the address from which the non-probing packet has
  *                         been received. If it does not match the expected
- *                         migration address, the method does nothing.
+ *                         migration address, the function does nothing.
  */
 void maybeEndServerMigrationProbing(
     QuicClientConnectionState& connectionState,

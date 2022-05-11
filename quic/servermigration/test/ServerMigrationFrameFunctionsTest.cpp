@@ -395,9 +395,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
-  EXPECT_EQ(
-      protocolState->packetCarryingServerMigrationAck,
-      getNextPacketNum(clientState, PacketNumberSpace::AppData));
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
@@ -412,9 +409,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
-  EXPECT_EQ(
-      protocolState->packetCarryingServerMigrationAck,
-      getNextPacketNum(clientState, PacketNumberSpace::AppData));
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
@@ -746,12 +740,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
       QuicTransportException);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationProbing) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  PacketNum serverMigrationAckPacketNumber = 1;
-  PacketNum packetBeforeServerMigrationAck = serverMigrationAckPacketNumber - 1;
-  PacketNum packetAfterServerMigrationAck = serverMigrationAckPacketNumber + 1;
-
   MockServerMigrationEventCallback callback;
   EXPECT_CALL(callback, onServerMigrationProbingStarted)
       .Times(Exactly(1))
@@ -764,15 +754,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
 
   clientState.serverMigrationState.serverMigrationEventCallback = &callback;
   clientState.serverMigrationState.protocolState =
-      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+      ExplicitClientState(migrationAddress);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
 
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
       clientState.peerAddress);
-  ASSERT_TRUE(packetBeforeServerMigrationAck < serverMigrationAckPacketNumber);
-  ASSERT_TRUE(packetAfterServerMigrationAck > serverMigrationAckPacketNumber);
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
   ASSERT_FALSE(clientState.pendingEvents.sendPing);
@@ -781,51 +769,20 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
 
   // Test when the probing is finished.
   protocolState->probingFinished = true;
-  auto updateWriteLooper = maybeStartServerMigrationProbing(
-      clientState, packetBeforeServerMigrationAck);
+  maybeUpdateServerMigrationProbing(clientState);
   EXPECT_NE(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
-  EXPECT_FALSE(updateWriteLooper);
   protocolState->probingFinished = false;
 
-  // Test attempt to start probing due to a loss
-  // not related to server migration.
-  updateWriteLooper = maybeStartServerMigrationProbing(
-      clientState, packetBeforeServerMigrationAck);
-  EXPECT_NE(
-      clientState.peerAddress,
-      migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
-  EXPECT_FALSE(updateWriteLooper);
-
-  updateWriteLooper = maybeStartServerMigrationProbing(
-      clientState, serverMigrationAckPacketNumber);
-  EXPECT_NE(
-      clientState.peerAddress,
-      migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
-  EXPECT_FALSE(updateWriteLooper);
-
-  // Test correct probing initialization.
-  updateWriteLooper = maybeStartServerMigrationProbing(
-      clientState, packetAfterServerMigrationAck);
+  // Test start of the probing.
+  maybeUpdateServerMigrationProbing(clientState);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_TRUE(clientState.pendingEvents.sendPing);
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_EQ(
@@ -840,98 +797,33 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
       clientState.congestionController,
       clientState.serverMigrationState.previousCongestionAndRttStates.at(0)
           .congestionController);
-  EXPECT_TRUE(updateWriteLooper);
 
   // Test with probing already in progress.
   ASSERT_TRUE(protocolState->probingInProgress);
-  updateWriteLooper = maybeStartServerMigrationProbing(
-      clientState, packetAfterServerMigrationAck);
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
-  EXPECT_FALSE(updateWriteLooper);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestScheduleExplicitServerMigrationProbe) {
-  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  PacketNum serverMigrationAckPacketNumber = 1;
-  PacketNum packetBeforeServerMigrationAck = serverMigrationAckPacketNumber - 1;
-  PacketNum packetAfterServerMigrationAck = serverMigrationAckPacketNumber + 1;
-  clientState.serverMigrationState.protocolState =
-      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
-  auto protocolState =
-      clientState.serverMigrationState.protocolState->asExplicitClientState();
-  protocolState->probingInProgress = true;
-
-  ASSERT_NE(
-      migrationAddress.getIPv4AddressAsSocketAddress(),
-      clientState.peerAddress);
-  ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_TRUE(protocolState->probingInProgress);
-  ASSERT_TRUE(packetBeforeServerMigrationAck < serverMigrationAckPacketNumber);
-  ASSERT_TRUE(packetAfterServerMigrationAck > serverMigrationAckPacketNumber);
-  ASSERT_FALSE(clientState.pendingEvents.sendPing);
-
-  // Test attempt to schedule a probe when the probing is already finished.
-  protocolState->probingFinished = true;
-  auto updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, packetAfterServerMigrationAck);
-  EXPECT_FALSE(updateLooper);
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-  protocolState->probingFinished = false;
-
-  // Test attempt to schedule a probe when probing is not in progress.
-  protocolState->probingInProgress = false;
-  updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, packetAfterServerMigrationAck);
-  EXPECT_FALSE(updateLooper);
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-  protocolState->probingInProgress = true;
-
-  // Test attempt to schedule a new probe due to a loss
-  // not caused by a previous probe.
-  updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, packetBeforeServerMigrationAck);
-  EXPECT_FALSE(updateLooper);
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-  updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, serverMigrationAckPacketNumber);
-  EXPECT_FALSE(updateLooper);
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
-
-  // Test attempt to schedule a new probe when a new probe
-  // is already scheduled.
-  clientState.pendingEvents.sendPing = true;
-  updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, packetAfterServerMigrationAck);
-  EXPECT_FALSE(updateLooper);
-  EXPECT_TRUE(clientState.pendingEvents.sendPing);
-  clientState.pendingEvents.sendPing = false;
-
-  // Test correct scheduling.
-  updateLooper = maybeScheduleServerMigrationProbe(
-      clientState, packetAfterServerMigrationAck);
-  EXPECT_TRUE(updateLooper);
-  EXPECT_TRUE(clientState.pendingEvents.sendPing);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  PacketNum serverMigrationAckPacketNumber = 1;
   clientState.serverMigrationState.protocolState =
-      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+      ExplicitClientState(migrationAddress);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
-  clientState.pendingEvents.sendPing = true;
 
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
       clientState.peerAddress);
   ASSERT_FALSE(protocolState->probingFinished);
   ASSERT_TRUE(protocolState->probingInProgress);
-  ASSERT_TRUE(clientState.pendingEvents.sendPing);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
 
@@ -941,7 +833,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   maybeEndServerMigrationProbing(clientState, badPeerAddress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(protocolState->probingInProgress);
-  EXPECT_TRUE(clientState.pendingEvents.sendPing);
   EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
   EXPECT_FALSE(clientState.pathValidationLimiter);
 
@@ -962,7 +853,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
       clientState, migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(protocolState->probingFinished);
-  EXPECT_FALSE(clientState.pendingEvents.sendPing);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
 }
@@ -971,7 +861,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) 
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
   PacketNum serverMigrationAckPacketNumber = 1;
   clientState.serverMigrationState.protocolState =
-      ExplicitClientState(migrationAddress, serverMigrationAckPacketNumber);
+      ExplicitClientState(migrationAddress);
   clientState.serverMigrationState.migrationInProgress = true;
   clientState.pathValidationLimiter =
       std::make_unique<quic::PendingPathRateLimiter>(
