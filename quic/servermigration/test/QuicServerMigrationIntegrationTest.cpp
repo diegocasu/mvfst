@@ -127,6 +127,14 @@ class QuicServerMigrationIntegrationTestClient
                << " error=" << toString(error);
   }
 
+  void setKeyLoggerConfig(const std::string& fileName) noexcept {
+    QuicKeyLogWriter::Config config;
+    config.fileName = fileName;
+    config.flushPolicy = QuicKeyLogWriter::FlushPolicy::IMMEDIATELY;
+    config.writeMode = QuicKeyLogWriter::WriteMode::OVERWRITE;
+    keyLoggerConfig_ = std::move(config);
+  }
+
   void start() {
     auto evb = networkThread.getEventBase();
 
@@ -135,10 +143,21 @@ class QuicServerMigrationIntegrationTestClient
       auto sock = std::make_unique<folly::AsyncUDPSocket>(evb);
       sock->bind(clientAddress);
 
-      auto fizzClientContext =
-          FizzClientQuicHandshakeContext::Builder()
-              .setCertificateVerifier(test::createTestCertificateVerifier())
-              .build();
+      std::shared_ptr<FizzClientQuicHandshakeContext> fizzClientContext;
+      if (keyLoggerConfig_) {
+        LOG(INFO) << "Setting key logger configuration";
+        fizzClientContext =
+            FizzClientQuicHandshakeContext::Builder()
+                .setCertificateVerifier(test::createTestCertificateVerifier())
+                .enableKeyLogging(keyLoggerConfig_.value())
+                .build();
+      } else {
+        LOG(INFO) << "Ignoring key logger configuration";
+        fizzClientContext =
+            FizzClientQuicHandshakeContext::Builder()
+                .setCertificateVerifier(test::createTestCertificateVerifier())
+                .build();
+      }
 
       transport = std::make_shared<quic::QuicClientTransport>(
           evb, std::move(sock), std::move(fizzClientContext), 8);
@@ -192,6 +211,7 @@ class QuicServerMigrationIntegrationTestClient
   folly::ScopedEventBaseThread networkThread;
   std::unordered_set<ServerMigrationProtocol> migrationProtocols;
   ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+  folly::Optional<QuicKeyLogWriter::Config> keyLoggerConfig_;
 
   // Synchronization variables.
   folly::fibers::Baton startDone_;
