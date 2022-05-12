@@ -859,7 +859,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  PacketNum serverMigrationAckPacketNumber = 1;
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
   clientState.serverMigrationState.migrationInProgress = true;
