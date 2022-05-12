@@ -81,7 +81,7 @@ void onPTOAlarm(QuicConnectionStateBase& conn) {
         packetCount[PacketNumberSpace::AppData], kPacketToSendForPTO);
   }
   if (conn.probeTimeoutCallback) {
-    conn.probeTimeoutCallback.value()->onProbeTimeout();
+    conn.probeTimeoutCallback->onProbeTimeout();
   }
 }
 

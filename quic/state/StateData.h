@@ -858,8 +858,7 @@ struct QuicConnectionStateBase : public folly::DelayedDestruction {
   // Callback used to inform the transport about probe timeout events.
   // At the moment, it is used only by QuicClientTransport as part of the
   // server migration extension.
-  folly::Optional<std::shared_ptr<QuicProbeTimeoutCallback>>
-      probeTimeoutCallback;
+  std::shared_ptr<QuicProbeTimeoutCallback> probeTimeoutCallback;
 
   // Flag used to check if a correct PATH_RESPONSE was processed in this
   // execution loop. At the moment, it is used only by QuicClientTransport as
