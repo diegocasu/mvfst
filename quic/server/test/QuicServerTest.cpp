@@ -3312,5 +3312,25 @@ TEST_F(QuicServerTest, OneEVB) {
   evb.loop();
 }
 
+TEST_F(QuicServerTest, TestOnNetworkSwitch) {
+  folly::EventBase evb;
+  folly::SocketAddress address("127.0.0.1", 1234);
+  server_->initialize(address, {&evb}, true);
+
+  // Test attempt to switch to an address of a different family.
+  folly::SocketAddress badNewAddress("::1", 5678);
+  ASSERT_NE(server_->getAddress(), badNewAddress);
+  server_->onNetworkSwitch(badNewAddress);
+  EXPECT_NE(server_->getAddress(), badNewAddress);
+
+  // Test correct switch.
+  folly::SocketAddress newAddress("127.1.1.1", 5678);
+  ASSERT_NE(server_->getAddress(), newAddress);
+  server_->onNetworkSwitch(newAddress);
+  EXPECT_EQ(server_->getAddress(), newAddress);
+
+  server_->shutdown();
+}
+
 } // namespace test
 } // namespace quic
