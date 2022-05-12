@@ -377,6 +377,16 @@ void handlePoolMigrationAddressFrame(
         "Received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
+  if ((connectionState.peerAddress.getIPAddress().isV4() &&
+       frame.address.getIPv4AddressAsSocketAddress() ==
+           connectionState.peerAddress) ||
+      (connectionState.peerAddress.getIPAddress().isV6() &&
+       frame.address.getIPv6AddressAsSocketAddress() ==
+           connectionState.peerAddress)) {
+    throw quic::QuicTransportException(
+        "Received a POOL_MIGRATION_ADDRESS frame carrying the current address of the peer",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
 
   if (connectionState.serverMigrationState.serverMigrationEventCallback) {
     connectionState.serverMigrationState.serverMigrationEventCallback

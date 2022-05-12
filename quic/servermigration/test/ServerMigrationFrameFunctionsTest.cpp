@@ -226,6 +226,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
       QuicTransportException);
   clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
 
+  // Test with a frame carrying the current address of the server.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          PoolMigrationAddressFrame(QuicIPAddress(clientState.peerAddress)),
+          0),
+      QuicTransportException);
+
   // Test with a migration in progress.
   clientState.serverMigrationState.migrationInProgress = true;
   ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
