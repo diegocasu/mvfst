@@ -278,9 +278,13 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
 
   if (!migrationAddress ||
       (socket_->address().getIPAddress().isV4() &&
-       !migrationAddress->hasIPv4Field()) ||
+       (!migrationAddress->hasIPv4Field() ||
+        socket_->address() ==
+            migrationAddress->getIPv4AddressAsSocketAddress())) ||
       (socket_->address().getIPAddress().isV6() &&
-       !migrationAddress->hasIPv6Field())) {
+       (!migrationAddress->hasIPv6Field() ||
+        socket_->address() ==
+            migrationAddress->getIPv6AddressAsSocketAddress()))) {
     invokeFailureCallbackAndClose(
         ServerMigrationError::INVALID_ADDRESS,
         "Invalid address for the Explicit protocol");

@@ -1931,6 +1931,28 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitAddressFami
       QuicIPAddress(folly::IPAddressV6("::1"), 5000));
 }
 
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitSameAddressAsBefore) {
+  MockServerMigrationEventCallback callback;
+  EXPECT_CALL(callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      });
+  server->setServerMigrationEventCallback(&callback);
+
+  // Simulate successful negotiation.
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}),
+      std::unordered_set<ServerMigrationProtocol>(
+          {ServerMigrationProtocol::EXPLICIT}));
+
+  auto currentAddress = server->getSocket().address();
+  ASSERT_EQ(currentAddress, server->getSocket().address());
+  server->onImminentServerMigration(
+      ServerMigrationProtocol::EXPLICIT, QuicIPAddress(currentAddress));
+}
+
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateSameProtocol) {
   MockServerMigrationEventCallback callback;
   EXPECT_CALL(callback, onServerMigrationFailed)
