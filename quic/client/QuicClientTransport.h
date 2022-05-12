@@ -282,7 +282,11 @@ class QuicClientTransport
    */
   void maybeSendTransportKnobs();
 
+  void maybeIssueConnectionIds();
+  folly::Optional<ConnectionIdData> createAndAddNewSelfConnId();
+
   bool replaySafeNotified_{false};
+  bool connectionIdsIssued_{false};
   // Set it QuicClientTransport is in a self owning mode. This will be cleaned
   // up when the caller invokes a terminal call to the transport.
   std::shared_ptr<QuicClientTransport> selfOwning_;

@@ -749,6 +749,7 @@ void onServerReadDataFromOpen(
             conn.transportSettings.idleTimeout,
             conn.transportSettings.ackDelayExponent,
             conn.transportSettings.maxRecvPacketSize,
+            conn.transportSettings.selfActiveConnectionIdLimit,
             *newServerConnIdData->token,
             conn.serverConnectionId.value(),
             initialDestinationConnectionId,

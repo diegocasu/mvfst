@@ -107,6 +107,7 @@ class ClientHandshakeTest : public Test, public boost::static_visitor<> {
             kDefaultIdleTimeout,
             kDefaultAckDelayExponent,
             kDefaultUDPSendPacketLen,
+            kDefaultActiveConnectionIdLimit,
             generateStatelessResetToken(),
             ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
             ConnectionId(std::vector<uint8_t>()));

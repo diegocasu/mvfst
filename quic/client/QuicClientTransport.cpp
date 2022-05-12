@@ -354,13 +354,24 @@ void QuicClientTransport::processPacketData(
     conn_->readCodec->setServerConnectionId(*conn_->serverConnectionId);
   }
 
-  // Error out if the connection id on the packet is not the one that is
-  // expected.
+  // Error out if the connection id on the packet is not an expected one.
   bool connidMatched = true;
   if ((longHeader &&
-       longHeader->getDestinationConnId() != *conn_->clientConnectionId) ||
+       longHeader->getDestinationConnId() != *conn_->clientConnectionId &&
+       std::find_if(
+           conn_->selfConnectionIds.begin(),
+           conn_->selfConnectionIds.end(),
+           [&longHeader](const ConnectionIdData& connIdData) {
+             return longHeader->getDestinationConnId() == connIdData.connId;
+           }) == conn_->selfConnectionIds.end()) ||
       (shortHeader &&
-       shortHeader->getConnectionId() != *conn_->clientConnectionId)) {
+       shortHeader->getConnectionId() != *conn_->clientConnectionId &&
+       std::find_if(
+           conn_->selfConnectionIds.begin(),
+           conn_->selfConnectionIds.end(),
+           [&shortHeader](const ConnectionIdData& connIdData) {
+             return shortHeader->getConnectionId() == connIdData.connId;
+           }) == conn_->selfConnectionIds.end())) {
     connidMatched = false;
   }
   if (!connidMatched) {
@@ -861,6 +872,7 @@ void QuicClientTransport::onReadData(
   }
 
   maybeSendTransportKnobs();
+  maybeIssueConnectionIds();
 }
 
 void QuicClientTransport::writeData() {
@@ -1925,6 +1937,64 @@ void QuicClientTransport::maybeSendTransportKnobs() {
     }
     transportKnobsSent_ = true;
   }
+}
+
+void QuicClientTransport::maybeIssueConnectionIds() {
+  // Send the connection IDs to the server only if the server migration is
+  // enabled. This is akin to the condition used by the server to send
+  // connection IDs to the client (the client migration must be enabled).
+  if (!connectionIdsIssued_ && conn_->oneRttWriteCipher &&
+      clientConn_->serverMigrationState.negotiator &&
+      clientConn_->serverMigrationState.negotiator->getNegotiatedProtocols() &&
+      !clientConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
+           ->empty()) {
+    connectionIdsIssued_ = true;
+
+    // Setting default stateless reset token if not set.
+    if (!conn_->transportSettings.statelessResetTokenSecret) {
+      std::array<uint8_t, kStatelessResetTokenSecretLength> secret;
+      folly::Random::secureRandom(secret.data(), secret.size());
+      conn_->transportSettings.statelessResetTokenSecret = std::move(secret);
+    }
+
+    // If the peer specifies that they have a limit of 1,000,000 connection ids
+    // then only issue a small number at first, since the client still needs to
+    // be able to search through all issued ids for accepting the packet.
+    const uint64_t maximumIdsToIssue = std::min(
+        conn_->peerActiveConnectionIdLimit, kDefaultActiveConnectionIdLimit);
+
+    for (size_t i = conn_->selfConnectionIds.size(); i < maximumIdsToIssue;
+         ++i) {
+      auto newConnIdData = createAndAddNewSelfConnId();
+      if (!newConnIdData.has_value()) {
+        return;
+      }
+      NewConnectionIdFrame frame(
+          newConnIdData->sequenceNumber,
+          0,
+          newConnIdData->connId,
+          *newConnIdData->token);
+      sendSimpleFrame(*conn_, std::move(frame));
+    }
+  }
+}
+
+folly::Optional<ConnectionIdData>
+QuicClientTransport::createAndAddNewSelfConnId() {
+  CHECK(conn_->transportSettings.statelessResetTokenSecret);
+  // Use the same stateless reset generator of the server,
+  // but passing the client address.
+  StatelessResetGenerator generator(
+      conn_->transportSettings.statelessResetTokenSecret.value(),
+      socket_->address().getFullyQualified());
+
+  auto newConnId =
+      ConnectionId::createRandom(conn_->clientConnectionId->size());
+  auto newConnIdData =
+      ConnectionIdData{newConnId, conn_->nextSelfConnectionIdSequence++};
+  newConnIdData.token = generator.generateToken(newConnIdData.connId);
+  conn_->selfConnectionIds.push_back(newConnIdData);
+  return newConnIdData;
 }
 
 void QuicClientTransport::onProbeTimeout() {

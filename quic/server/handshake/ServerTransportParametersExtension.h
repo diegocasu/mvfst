@@ -27,6 +27,7 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
       std::chrono::milliseconds idleTimeout,
       uint64_t ackDelayExponent,
       uint64_t maxRecvPacketSize,
+      uint64_t activeConnectionIdLimit,
       const StatelessResetToken& token,
       ConnectionId initialSourceCid,
       ConnectionId originalDestinationCid,
@@ -42,6 +43,7 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
         idleTimeout_(idleTimeout),
         ackDelayExponent_(ackDelayExponent),
         maxRecvPacketSize_(maxRecvPacketSize),
+        activeConnectionLimit_(activeConnectionIdLimit),
         token_(token),
         initialSourceCid_(initialSourceCid),
         originalDestinationCid_(originalDestinationCid),
@@ -93,6 +95,9 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
         TransportParameterId::ack_delay_exponent, ackDelayExponent_));
     params.parameters.push_back(encodeIntegerParameter(
         TransportParameterId::max_packet_size, maxRecvPacketSize_));
+    params.parameters.push_back(encodeIntegerParameter(
+        TransportParameterId::active_connection_id_limit,
+        activeConnectionLimit_));
     TransportParameter statelessReset;
     statelessReset.parameter = TransportParameterId::stateless_reset_token;
     statelessReset.value = folly::IOBuf::copyBuffer(token_);
@@ -147,6 +152,7 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
   std::chrono::milliseconds idleTimeout_;
   uint64_t ackDelayExponent_;
   uint64_t maxRecvPacketSize_;
+  uint64_t activeConnectionLimit_;
   folly::Optional<ClientTransportParameters> clientTransportParameters_;
   StatelessResetToken token_;
   ConnectionId initialSourceCid_;

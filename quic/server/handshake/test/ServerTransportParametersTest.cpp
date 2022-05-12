@@ -46,6 +46,7 @@ TEST(ServerTransportParametersTest, TestGetExtensions) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()));
@@ -68,6 +69,7 @@ TEST(ServerTransportParametersTest, TestGetExtensionsMissingClientParams) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()));
@@ -85,6 +87,7 @@ TEST(ServerTransportParametersTest, TestQuicV1RejectDraftExtensionNumber) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()));
@@ -106,6 +109,7 @@ TEST(ServerTransportParametersTest, TestQuicV1RejectDuplicateExtensions) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()));
@@ -131,6 +135,7 @@ TEST(ServerTransportParametersTest, TestQuicV1Fields) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>{0xfb, 0xfa, 0xf9, 0xf8}));
@@ -170,6 +175,7 @@ TEST(ServerTransportParametersTest, TestMvfstFields) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>{0xfb, 0xfa, 0xf9, 0xf8}));
@@ -217,6 +223,7 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteEncoding) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()),
@@ -252,6 +259,7 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()),
@@ -300,6 +308,7 @@ TEST(ServerTransportParametersTest, TestNoServerMigrationSuiteInClientHello) {
       kDefaultIdleTimeout,
       kDefaultAckDelayExponent,
       kDefaultUDPSendPacketLen,
+      kDefaultActiveConnectionIdLimit,
       generateStatelessResetToken(),
       ConnectionId(std::vector<uint8_t>{0xff, 0xfe, 0xfd, 0xfc}),
       ConnectionId(std::vector<uint8_t>()),

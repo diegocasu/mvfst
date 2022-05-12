@@ -207,8 +207,6 @@ void processServerInitialParams(
     conn.udpSendPacketLen = *packetSize;
   }
 
-  // Currently no-op for a client; it doesn't issue connection ids
-  // to the server.
   conn.peerActiveConnectionIdLimit =
       activeConnectionIdLimit.value_or(kDefaultActiveConnectionIdLimit);
 
