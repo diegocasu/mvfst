@@ -473,6 +473,7 @@ class QuicServerMigrationIntegrationTest : public Test {
   std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
   std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
   std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
+  std::chrono::seconds batonTimeout{5};
 };
 
 TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
@@ -514,7 +515,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
   // Send a message and wait for the response to be sure that
   // the server has finished the handshake.
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   // When the response to the previous message has been received,
   // clientStateUpdateCallback should have been evaluated, so the test can end.
@@ -554,7 +556,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -597,7 +600,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
   // Migrate client.
@@ -608,7 +611,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
 
   // Send a message from the new address.
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -651,7 +655,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -688,7 +693,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -723,7 +729,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -795,13 +802,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   // Send a second message to be sure that the acks,
   // if present, are received by the server.
-  client.messageReceived.reset();
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -848,13 +856,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   // Send a second message to be sure that the acks,
   // if present, are received by the server.
-  client.messageReceived.reset();
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -900,13 +909,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   // Send a second message to be sure that the acks,
   // if present, are received by the server.
-  client.messageReceived.reset();
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -954,13 +964,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   // Send a second message to be sure that the acks,
   // if present, are received by the server.
-  client.messageReceived.reset();
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
 
   client.close();
   server.server->shutdown();
@@ -1011,7 +1022,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   client.startDone_.wait();
 
   client.send("ping");
-  client.messageReceived.wait();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
   Mock::VerifyAndClearExpectations(&clientStateUpdateCallback);
 
@@ -1045,7 +1056,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
 
   server.server->onImminentServerMigration(
       ServerMigrationProtocol::EXPLICIT, quicIpServerMigrationAddress);
-  serverMigrationReadyBaton.wait();
+  EXPECT_TRUE(serverMigrationReadyBaton.try_wait_for(batonTimeout));
+  serverMigrationReadyBaton.reset();
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
 
@@ -1074,7 +1086,10 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
 
   server.server->onNetworkSwitch(serverMigrationAddress);
   client.send("migration");
-  serverMigrationCompletedBaton.wait();
+  EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
+  serverMigrationCompletedBaton.reset();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
 
