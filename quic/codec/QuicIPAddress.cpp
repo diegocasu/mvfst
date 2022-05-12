@@ -64,11 +64,11 @@ bool QuicIPAddress::operator!=(const QuicIPAddress& rhs) const {
   return !(rhs == *this);
 }
 
-folly::SocketAddress QuicIPAddress::getIPv4AddressAsSocketAddress() {
+folly::SocketAddress QuicIPAddress::getIPv4AddressAsSocketAddress() const {
   return {ipv4Address, ipv4Port};
 }
 
-folly::SocketAddress QuicIPAddress::getIPv6AddressAsSocketAddress() {
+folly::SocketAddress QuicIPAddress::getIPv6AddressAsSocketAddress() const {
   return {ipv6Address, ipv6Port};
 }
 

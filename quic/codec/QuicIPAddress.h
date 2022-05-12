@@ -68,14 +68,14 @@ struct QuicIPAddress {
    * and port stored in the Quic IP address.
    * @return  a socket address initialized using the IPv4 address and port.
    */
-  folly::SocketAddress getIPv4AddressAsSocketAddress();
+  folly::SocketAddress getIPv4AddressAsSocketAddress() const;
 
   /**
    * Returns a socket address object initialized using the IPv6 address
    * and port stored in the Quic IP address.
    * @return  a socket address initialized using the IPv6 address and port.
    */
-  folly::SocketAddress getIPv6AddressAsSocketAddress();
+  folly::SocketAddress getIPv6AddressAsSocketAddress() const;
 };
 
 struct QuicIPAddressHash {
