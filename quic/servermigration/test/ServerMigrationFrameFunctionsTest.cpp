@@ -467,9 +467,17 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedExp
       QuicTransportException);
   clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
 
+  // Test with a frame carrying the current address of the server.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          ServerMigrationFrame(QuicIPAddress(clientState.peerAddress)),
+          6),
+      QuicTransportException);
+
   // Test reception of multiple frames with different addresses.
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrameV4, 6));
+      clientState, serverMigrationFrameV4, 7));
   EXPECT_TRUE(clientState.serverMigrationState.protocolState);
 
   EXPECT_THROW(
@@ -477,7 +485,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedExp
           clientState,
           ServerMigrationFrame(
               QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 6000)),
-          7),
+          8),
       QuicTransportException);
 }
 
