@@ -176,9 +176,9 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
 
     // Callbacks and flags denoting if a particular
     // callback has been invoked or not.
-    ClientStateUpdateCallback* clientStateUpdateCallback{nullptr};
+    std::shared_ptr<ClientStateUpdateCallback> clientStateUpdateCallback;
     bool notifiedHandshakeDone{false};
-    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+    std::shared_ptr<ServerMigrationEventCallback> serverMigrationEventCallback;
   };
 
   ServerMigrationState serverMigrationState;

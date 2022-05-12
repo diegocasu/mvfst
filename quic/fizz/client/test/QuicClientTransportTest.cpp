@@ -1027,8 +1027,8 @@ TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallback) {
   EXPECT_FALSE(
       client->getConn().serverMigrationState.serverMigrationEventCallback);
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_TRUE(client->setServerMigrationEventCallback(&callback));
+  auto callback = std::make_shared<MockServerMigrationEventCallback>() ;
+  EXPECT_TRUE(client->setServerMigrationEventCallback(callback));
   EXPECT_TRUE(
       client->getConn().serverMigrationState.serverMigrationEventCallback);
 

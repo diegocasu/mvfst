@@ -150,7 +150,7 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
     std::vector<CongestionAndRttState> previousCongestionAndRttStates;
 
     // Callbacks.
-    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+    std::shared_ptr<ServerMigrationEventCallback> serverMigrationEventCallback;
   };
 
   ServerMigrationState serverMigrationState;

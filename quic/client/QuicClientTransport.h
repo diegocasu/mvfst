@@ -167,7 +167,8 @@ class QuicClientTransport
    * @param callback  the callback.
    * @return          true if the callback has been set, false otherwise.
    */
-  bool setServerMigrationEventCallback(ServerMigrationEventCallback* callback);
+  bool setServerMigrationEventCallback(
+      std::shared_ptr<ServerMigrationEventCallback> callback);
 
   /**
    * Set callback for various transport stats (such as packet received, dropped

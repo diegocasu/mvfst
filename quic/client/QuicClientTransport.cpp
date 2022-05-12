@@ -1836,6 +1836,7 @@ void QuicClientTransport::adjustGROBuffers() {
 
 void QuicClientTransport::closeTransport() {
   happyEyeballsConnAttemptDelayTimeout_.cancelTimeout();
+  clientConn_->serverMigrationState.serverMigrationEventCallback = nullptr;
 }
 
 void QuicClientTransport::unbindConnection() {
@@ -1864,12 +1865,13 @@ bool QuicClientTransport::allowServerMigration(
 }
 
 bool QuicClientTransport::setServerMigrationEventCallback(
-    ServerMigrationEventCallback* callback) {
-  if (callback == nullptr) {
+    std::shared_ptr<ServerMigrationEventCallback> callback) {
+  if (!callback) {
     LOG(ERROR) << "Null server migration event callback";
     return false;
   }
-  clientConn_->serverMigrationState.serverMigrationEventCallback = callback;
+  clientConn_->serverMigrationState.serverMigrationEventCallback =
+      std::move(callback);
   return true;
 }
 

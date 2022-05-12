@@ -487,22 +487,24 @@ void QuicServerTransport::onNetworkSwitch(
 }
 
 bool QuicServerTransport::setClientStateUpdateCallback(
-    ClientStateUpdateCallback* callback) {
-  if (callback == nullptr) {
+    std::shared_ptr<ClientStateUpdateCallback> callback) {
+  if (!callback) {
     LOG(ERROR) << "Null client state update callback";
     return false;
   }
-  serverConn_->serverMigrationState.clientStateUpdateCallback = callback;
+  serverConn_->serverMigrationState.clientStateUpdateCallback =
+      std::move(callback);
   return true;
 }
 
 bool QuicServerTransport::setServerMigrationEventCallback(
-    ServerMigrationEventCallback* callback) {
-  if (callback == nullptr) {
+    std::shared_ptr<ServerMigrationEventCallback> callback) {
+  if (!callback) {
     LOG(ERROR) << "Null server migration event callback";
     return false;
   }
-  serverConn_->serverMigrationState.serverMigrationEventCallback = callback;
+  serverConn_->serverMigrationState.serverMigrationEventCallback =
+      std::move(callback);
   return true;
 }
 
@@ -731,7 +733,9 @@ void QuicServerTransport::closeTransport() {
     serverConn_->serverMigrationState.clientStateUpdateCallback
         ->onConnectionClose(
             serverConn_->serverMigrationState.originalConnectionId.value());
+    serverConn_->serverMigrationState.clientStateUpdateCallback = nullptr;
   }
+  serverConn_->serverMigrationState.serverMigrationEventCallback = nullptr;
 
   serverConn_->serverHandshakeLayer->cancel();
   // Clear out pending data.

@@ -38,13 +38,14 @@ class QuicServerMigrationIntegrationTestClient
       std::string serverHost,
       uint16_t serverPort,
       std::unordered_set<ServerMigrationProtocol> migrationProtocols,
-      ServerMigrationEventCallback* serverMigrationEventCallback = nullptr)
+      std::shared_ptr<ServerMigrationEventCallback>
+          serverMigrationEventCallback = nullptr)
       : clientHost(std::move(clientHost)),
         clientPort(clientPort),
         serverHost(std::move(serverHost)),
         serverPort(serverPort),
         migrationProtocols(std::move(migrationProtocols)),
-        serverMigrationEventCallback(serverMigrationEventCallback) {}
+        serverMigrationEventCallback(std::move(serverMigrationEventCallback)) {}
 
   ~QuicServerMigrationIntegrationTestClient() = default;
 
@@ -212,7 +213,7 @@ class QuicServerMigrationIntegrationTestClient
   std::shared_ptr<quic::QuicClientTransport> transport;
   folly::ScopedEventBaseThread networkThread;
   std::unordered_set<ServerMigrationProtocol> migrationProtocols;
-  ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+  std::shared_ptr<ServerMigrationEventCallback> serverMigrationEventCallback;
   folly::Optional<QuicKeyLogWriter::Config> keyLoggerConfig_;
 
   // Synchronization variables.
@@ -352,12 +353,14 @@ class QuicServerMigrationIntegrationTestServer {
         std::unordered_set<ServerMigrationProtocol> migrationProtocols,
         std::unordered_set<QuicIPAddress, QuicIPAddressHash>
             poolMigrationAddresses,
-        ClientStateUpdateCallback* clientStateCallback,
-        ServerMigrationEventCallback* serverMigrationEventCallback)
+        std::shared_ptr<ClientStateUpdateCallback> clientStateCallback,
+        std::shared_ptr<ServerMigrationEventCallback>
+            serverMigrationEventCallback)
         : migrationProtocols(std::move(migrationProtocols)),
           poolMigrationAddresses(std::move(poolMigrationAddresses)),
-          clientStateCallback(clientStateCallback),
-          serverMigrationEventCallback(serverMigrationEventCallback){};
+          clientStateCallback(std::move(clientStateCallback)),
+          serverMigrationEventCallback(
+              std::move(serverMigrationEventCallback)){};
 
     ~ServerTransportFactory() override {
       while (!handlers.empty()) {
@@ -417,16 +420,17 @@ class QuicServerMigrationIntegrationTestServer {
     std::vector<std::unique_ptr<MessageHandler>> handlers;
     std::unordered_set<ServerMigrationProtocol> migrationProtocols;
     std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
-    ClientStateUpdateCallback* clientStateCallback{nullptr};
-    ServerMigrationEventCallback* serverMigrationEventCallback{nullptr};
+    std::shared_ptr<ClientStateUpdateCallback> clientStateCallback;
+    std::shared_ptr<ServerMigrationEventCallback> serverMigrationEventCallback;
   };
 
   QuicServerMigrationIntegrationTestServer(
       std::string host,
       uint16_t port,
       std::unordered_set<ServerMigrationProtocol> migrationProtocols,
-      ClientStateUpdateCallback* clientStateCallback = nullptr,
-      ServerMigrationEventCallback* serverMigrationEventCallback = nullptr,
+      std::shared_ptr<ClientStateUpdateCallback> clientStateCallback = nullptr,
+      std::shared_ptr<ServerMigrationEventCallback>
+          serverMigrationEventCallback = nullptr,
       std::unordered_set<QuicIPAddress, QuicIPAddressHash>
           poolMigrationAddresses =
               std::unordered_set<QuicIPAddress, QuicIPAddressHash>())
@@ -437,8 +441,8 @@ class QuicServerMigrationIntegrationTestServer {
         std::make_unique<ServerTransportFactory>(
             std::move(migrationProtocols),
             std::move(poolMigrationAddresses),
-            clientStateCallback,
-            serverMigrationEventCallback));
+            std::move(clientStateCallback),
+            std::move(serverMigrationEventCallback)));
 
     auto serverCtx = quic::test::createServerCtx();
     serverCtx->setClock(std::make_shared<fizz::SystemClock>());
@@ -494,8 +498,9 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
             ServerMigrationProtocol::EXPLICIT));
       };
 
-  MockClientStateUpdateCallback clientStateUpdateCallback;
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce(compareWithExpectedClient);
 
@@ -503,7 +508,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -526,16 +531,17 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
 
 TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
   std::string serverCidHex;
-  MockClientStateUpdateCallback clientStateUpdateCallback;
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
 
   {
     InSequence seq;
-    EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+    EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
         .Times(Exactly(1))
         .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
           serverCidHex = serverConnectionId.hex();
         });
-    EXPECT_CALL(clientStateUpdateCallback, onConnectionClose)
+    EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
         .Times(Exactly(1))
         .WillOnce([&](ConnectionId serverConnectionId) {
           EXPECT_EQ(serverCidHex, serverConnectionId.hex());
@@ -546,7 +552,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -568,16 +574,17 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
   ASSERT_NE(clientMigrationAddress.getIPAddress().str(), clientIP);
 
   std::string serverCidHex;
-  MockClientStateUpdateCallback clientStateUpdateCallback;
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
 
   {
     InSequence seq;
-    EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+    EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
         .Times(Exactly(1))
         .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
           serverCidHex = serverConnectionId.hex();
         });
-    EXPECT_CALL(clientStateUpdateCallback, onClientMigrationDetected)
+    EXPECT_CALL(*clientStateUpdateCallback, onClientMigrationDetected)
         .Times(Exactly(1))
         .WillOnce([&](ConnectionId serverConnectionId,
                       folly::SocketAddress newClientAddress) {
@@ -590,7 +597,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -626,8 +633,9 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
 
-  MockClientStateUpdateCallback clientStateUpdateCallback;
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce([&](Unused,
                     Unused,
@@ -645,7 +653,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -668,8 +676,9 @@ TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
 
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
 
-  MockClientStateUpdateCallback clientStateUpdateCallback;
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce([&](Unused,
                     Unused,
@@ -683,7 +692,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -705,8 +714,9 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
   // so the server migration support is automatically disabled
   // by the test classes.
 
-  MockClientStateUpdateCallback clientStateUpdateCallback;
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce([&](Unused,
                     Unused,
@@ -719,7 +729,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback);
+      clientStateUpdateCallback);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -748,11 +758,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
 
   std::string serverCidHex;
-  MockClientStateUpdateCallback clientStateUpdateCallback;
-  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
-  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<MockServerMigrationEventCallback>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<MockServerMigrationEventCallback>();
 
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce([&](Unused,
                     ConnectionId serverConnectionId,
@@ -765,14 +778,15 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
         serverCidHex = serverConnectionId.hex();
       });
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      *serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
       .Times(Exactly(poolMigrationAddresses.size()))
       .WillRepeatedly([&](PoolMigrationAddressFrame frame) {
         auto it = poolMigrationAddresses.find(frame.address);
         EXPECT_NE(it, poolMigrationAddresses.end());
       });
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      *serverMigrationEventCallbackServerSide,
+      onPoolMigrationAddressAckReceived)
       .Times(Exactly(poolMigrationAddresses.size()))
       .WillRepeatedly([&](ConnectionId serverConnectionId,
                           PoolMigrationAddressFrame frame) {
@@ -785,8 +799,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback,
-      &serverMigrationEventCallbackServerSide,
+      clientStateUpdateCallback,
+      serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
   server.start();
   server.server->waitUntilInitialized();
@@ -797,7 +811,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       serverIP,
       serverPort,
       clientSupportedProtocols,
-      &serverMigrationEventCallbackClientSide);
+      serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
@@ -825,14 +839,17 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
   poolMigrationAddresses.insert(
       QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
 
-  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
-  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<MockServerMigrationEventCallback>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<MockServerMigrationEventCallback>();
 
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      *serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
       .Times(0);
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      *serverMigrationEventCallbackServerSide,
+      onPoolMigrationAddressAckReceived)
       .Times(0);
 
   QuicServerMigrationIntegrationTestServer server(
@@ -840,7 +857,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
       serverPort,
       serverSupportedProtocols,
       nullptr,
-      &serverMigrationEventCallbackServerSide,
+      serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
   server.start();
   server.server->waitUntilInitialized();
@@ -851,7 +868,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
       serverIP,
       serverPort,
       clientSupportedProtocols,
-      &serverMigrationEventCallbackClientSide);
+      serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
@@ -878,14 +895,17 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
   poolMigrationAddresses.insert(
       QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
 
-  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
-  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<MockServerMigrationEventCallback>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<MockServerMigrationEventCallback>();
 
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      *serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
       .Times(0);
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      *serverMigrationEventCallbackServerSide,
+      onPoolMigrationAddressAckReceived)
       .Times(0);
 
   QuicServerMigrationIntegrationTestServer server(
@@ -893,7 +913,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
       serverPort,
       serverSupportedProtocols,
       nullptr,
-      &serverMigrationEventCallbackServerSide,
+      serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
   server.start();
   server.server->waitUntilInitialized();
@@ -904,7 +924,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
       serverIP,
       serverPort,
       clientSupportedProtocols,
-      &serverMigrationEventCallbackClientSide);
+      serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
@@ -933,14 +953,17 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
   poolMigrationAddresses.insert(
       QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
 
-  MockServerMigrationEventCallback serverMigrationEventCallbackServerSide;
-  MockServerMigrationEventCallback serverMigrationEventCallbackClientSide;
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<MockServerMigrationEventCallback>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<MockServerMigrationEventCallback>();
 
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      *serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
       .Times(0);
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onPoolMigrationAddressAckReceived)
+      *serverMigrationEventCallbackServerSide,
+      onPoolMigrationAddressAckReceived)
       .Times(0);
 
   QuicServerMigrationIntegrationTestServer server(
@@ -948,7 +971,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
       serverPort,
       serverSupportedProtocols,
       nullptr,
-      &serverMigrationEventCallbackServerSide,
+      serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
   server.start();
   server.server->waitUntilInitialized();
@@ -959,7 +982,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
       serverIP,
       serverPort,
       clientSupportedProtocols,
-      &serverMigrationEventCallbackClientSide);
+      serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
@@ -981,13 +1004,15 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   std::string serverCidHex;
-  StrictMock<MockClientStateUpdateCallback> clientStateUpdateCallback;
-  StrictMock<MockServerMigrationEventCallback>
-      serverMigrationEventCallbackServerSide;
-  StrictMock<MockServerMigrationEventCallback>
-      serverMigrationEventCallbackClientSide;
 
-  EXPECT_CALL(clientStateUpdateCallback, onHandshakeFinished)
+  auto clientStateUpdateCallback =
+      std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
       .Times(Exactly(1))
       .WillOnce([&](folly::SocketAddress clientAddress,
                     ConnectionId serverConnectionId,
@@ -1005,8 +1030,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverIP,
       serverPort,
       serverSupportedProtocols,
-      &clientStateUpdateCallback,
-      &serverMigrationEventCallbackServerSide,
+      clientStateUpdateCallback,
+      serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
   server.start();
   server.server->waitUntilInitialized();
@@ -1017,7 +1042,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverIP,
       serverPort,
       clientSupportedProtocols,
-      &serverMigrationEventCallbackClientSide);
+      serverMigrationEventCallbackClientSide);
   client.start();
   client.startDone_.wait();
 
@@ -1032,22 +1057,23 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   QuicIPAddress quicIpServerMigrationAddress(serverMigrationAddress);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
 
-  EXPECT_CALL(serverMigrationEventCallbackClientSide, onServerMigrationReceived)
+  EXPECT_CALL(
+      *serverMigrationEventCallbackClientSide, onServerMigrationReceived)
       .Times(Exactly(1))
       .WillOnce([&](ServerMigrationFrame frame) {
         EXPECT_EQ(frame, ServerMigrationFrame(quicIpServerMigrationAddress));
       });
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onServerMigrationAckReceived)
+      *serverMigrationEventCallbackServerSide, onServerMigrationAckReceived)
       .Times(Exactly(1))
       .WillOnce([&](ConnectionId serverConnectionId,
                     ServerMigrationFrame frame) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
         EXPECT_EQ(frame, ServerMigrationFrame(quicIpServerMigrationAddress));
       });
-  EXPECT_CALL(serverMigrationEventCallbackServerSide, onServerMigrationFailed)
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
       .Times(0);
-  EXPECT_CALL(serverMigrationEventCallbackServerSide, onServerMigrationReady)
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationReady)
       .Times(Exactly(1))
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
@@ -1064,7 +1090,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   // Start the migration.
   folly::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
+      *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(Exactly(1))
       .WillOnce([&](ServerMigrationProtocol protocol,
                     folly::SocketAddress probingAddress) {
@@ -1072,12 +1098,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
         EXPECT_EQ(probingAddress, serverMigrationAddress);
       });
   EXPECT_CALL(
-      serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
+      *serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
       .Times(Exactly(1));
-  EXPECT_CALL(serverMigrationEventCallbackServerSide, onServerMigrationFailed)
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
       .Times(0);
   EXPECT_CALL(
-      serverMigrationEventCallbackServerSide, onServerMigrationCompleted(_))
+      *serverMigrationEventCallbackServerSide, onServerMigrationCompleted(_))
       .Times(Exactly(1))
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
@@ -1093,7 +1119,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
 
-  EXPECT_CALL(clientStateUpdateCallback, onConnectionClose)
+  EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
       .Times(Exactly(1))
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);

@@ -101,8 +101,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   PoolMigrationAddressFrame poolMigrationAddressFrame2(
       QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onPoolMigrationAddressReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
       .Times(Exactly(2))
       .WillOnce([&](PoolMigrationAddressFrame frame) {
         EXPECT_TRUE(frame == poolMigrationAddressFrame1);
@@ -111,7 +111,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
         EXPECT_TRUE(frame == poolMigrationAddressFrame2);
       });
 
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
@@ -175,9 +175,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoo
   PoolMigrationAddressFrame poolMigrationAddressFrameV6(
       QuicIPAddress(folly::IPAddressV6("::1"), 5001));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onPoolMigrationAddressReceived).Times(0);
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
   // Test with server migration disabled.
   EXPECT_THROW(
@@ -256,14 +256,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolM
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onPoolMigrationAddressAckReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived)
       .Times(Exactly(1))
       .WillRepeatedly([&](Unused, PoolMigrationAddressFrame frame) {
         EXPECT_TRUE(frame == poolMigrationAddressFrame);
       });
 
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
@@ -304,9 +304,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoo
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onPoolMigrationAddressReceived).Times(0);
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
 
   // Test with server migration disabled.
@@ -379,14 +379,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived)
       .Times(Exactly(1))
       .WillOnce([&](ServerMigrationFrame frame) {
         EXPECT_TRUE(frame == serverMigrationFrame);
       });
 
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   enableServerMigrationServerSide();
@@ -501,15 +501,15 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedExpli
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationAckReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationFrame frame) {
         EXPECT_TRUE(frame == serverMigrationFrame);
       });
-  EXPECT_CALL(callback, onServerMigrationReady).Times(Exactly(1));
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
 
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   enableServerMigrationServerSide();
@@ -536,9 +536,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExp
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationAckReceived).Times(0);
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverState.serverMigrationState.protocolState =
       ExplicitServerState(serverMigrationFrame.address);
 
@@ -593,14 +593,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynch
   QuicIPAddress emptyAddress;
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived)
       .Times(Exactly(1))
       .WillOnce([&](ServerMigrationFrame frame) {
         EXPECT_TRUE(frame == serverMigrationFrame);
       });
 
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   clientSupportedProtocols.insert(
@@ -673,15 +673,15 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynch
   QuicIPAddress emptyAddress;
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationAckReceived)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationFrame frame) {
         EXPECT_TRUE(frame == serverMigrationFrame);
       });
-  EXPECT_CALL(callback, onServerMigrationReady).Times(Exactly(1));
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
 
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   clientSupportedProtocols.insert(
@@ -710,9 +710,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
   QuicIPAddress emptyAddress;
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationAckReceived).Times(0);
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverState.serverMigrationState.protocolState =
       SynchronizedSymmetricServerState();
 
@@ -758,8 +758,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationProbingStarted)
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted)
       .Times(Exactly(1))
       .WillOnce([&](ServerMigrationProtocol protocol,
                     folly::SocketAddress probingAddress) {
@@ -768,7 +768,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
             probingAddress, migrationAddress.getIPv4AddressAsSocketAddress());
       });
 
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
   auto protocolState =
@@ -883,9 +883,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) 
           clientState.udpSendPacketLen);
   clientState.serverMigrationState.largestProcessedPacketNumber = 0;
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationCompleted()).Times(Exactly(1));
-  clientState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationCompleted()).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
   ASSERT_TRUE(clientState.serverMigrationState.migrationInProgress);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState);
@@ -906,9 +906,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationServerSide) 
   serverState.serverMigrationState.migrationInProgress = true;
   serverState.serverMigrationState.largestProcessedPacketNumber = 0;
 
-  MockServerMigrationEventCallback callback;
-  EXPECT_CALL(callback, onServerMigrationCompleted(_)).Times(Exactly(1));
-  serverState.serverMigrationState.serverMigrationEventCallback = &callback;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationCompleted(_)).Times(Exactly(1));
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
 
   ASSERT_TRUE(serverState.serverMigrationState.migrationInProgress);
   ASSERT_TRUE(serverState.serverMigrationState.protocolState);
