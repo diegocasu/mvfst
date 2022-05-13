@@ -72,6 +72,34 @@ folly::SocketAddress QuicIPAddress::getIPv6AddressAsSocketAddress() const {
   return {ipv6Address, ipv6Port};
 }
 
+bool QuicIPAddress::operator<(const QuicIPAddress& rhs) const {
+  if (ipv4Address < rhs.ipv4Address)
+    return true;
+  if (rhs.ipv4Address < ipv4Address)
+    return false;
+  if (ipv4Port < rhs.ipv4Port)
+    return true;
+  if (rhs.ipv4Port < ipv4Port)
+    return false;
+  if (ipv6Address < rhs.ipv6Address)
+    return true;
+  if (rhs.ipv6Address < ipv6Address)
+    return false;
+  return ipv6Port < rhs.ipv6Port;
+}
+
+bool QuicIPAddress::operator>(const QuicIPAddress& rhs) const {
+  return rhs < *this;
+}
+
+bool QuicIPAddress::operator<=(const QuicIPAddress& rhs) const {
+  return !(rhs < *this);
+}
+
+bool QuicIPAddress::operator>=(const QuicIPAddress& rhs) const {
+  return !(*this < rhs);
+}
+
 size_t QuicIPAddressHash::operator()(const QuicIPAddress& quicIpAddress) const {
   return folly::hash::hash_combine(
       quicIpAddress.ipv4Address.hash(),

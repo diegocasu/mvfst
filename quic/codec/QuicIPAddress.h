@@ -76,6 +76,11 @@ struct QuicIPAddress {
    * @return  a socket address initialized using the IPv6 address and port.
    */
   folly::SocketAddress getIPv6AddressAsSocketAddress() const;
+
+  bool operator<(const QuicIPAddress& rhs) const;
+  bool operator>(const QuicIPAddress& rhs) const;
+  bool operator<=(const QuicIPAddress& rhs) const;
+  bool operator>=(const QuicIPAddress& rhs) const;
 };
 
 struct QuicIPAddressHash {
