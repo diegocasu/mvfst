@@ -125,15 +125,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
-  EXPECT_EQ(
-      clientState.serverMigrationState.protocolState
-          ->asPoolOfAddressesClientState()
-          ->migrationAddresses.size(),
-      1);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->migrationAddresses.count(poolMigrationAddressFrame1.address));
+          ->addressScheduler->contains(poolMigrationAddressFrame1.address));
 
   // Test reception of a duplicate.
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
@@ -142,15 +137,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
-  EXPECT_EQ(
-      clientState.serverMigrationState.protocolState
-          ->asPoolOfAddressesClientState()
-          ->migrationAddresses.size(),
-      1);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->migrationAddresses.count(poolMigrationAddressFrame1.address));
+          ->addressScheduler->contains(poolMigrationAddressFrame1.address));
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
       clientState, poolMigrationAddressFrame2, 0));
@@ -158,15 +148,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
-  EXPECT_EQ(
-      clientState.serverMigrationState.protocolState
-          ->asPoolOfAddressesClientState()
-          ->migrationAddresses.size(),
-      2);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->migrationAddresses.count(poolMigrationAddressFrame2.address));
+          ->addressScheduler->contains(poolMigrationAddressFrame2.address));
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoolMigrationAddress) {

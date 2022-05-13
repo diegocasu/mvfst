@@ -1,6 +1,7 @@
 #pragma once
 
 #include <folly/portability/GMock.h>
+#include <quic/servermigration/PoolMigrationAddressSchedulerFactory.h>
 #include <quic/servermigration/management/Callbacks.h>
 
 namespace quic {
@@ -84,6 +85,18 @@ class MockServerMigrationEventCallback : public ServerMigrationEventCallback {
       onServerMigrationCompleted,
       (ConnectionId serverConnectionId),
       (noexcept, override));
+};
+
+class MockPoolMigrationAddressSchedulerFactory
+    : public PoolMigrationAddressSchedulerFactory {
+ public:
+  ~MockPoolMigrationAddressSchedulerFactory() = default;
+
+  MOCK_METHOD(
+      std::shared_ptr<PoolMigrationAddressScheduler>,
+      make,
+      (),
+      (override));
 };
 
 } // namespace quic

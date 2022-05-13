@@ -1875,6 +1875,17 @@ bool QuicClientTransport::setServerMigrationEventCallback(
   return true;
 }
 
+bool QuicClientTransport::setPoolMigrationAddressSchedulerFactory(
+    std::unique_ptr<PoolMigrationAddressSchedulerFactory> factory) {
+  if (!factory) {
+    LOG(ERROR) << "Null pool migration address factory";
+    return false;
+  }
+  clientConn_->serverMigrationState.poolMigrationAddressSchedulerFactory =
+      std::move(factory);
+  return true;
+}
+
 void QuicClientTransport::onNetworkSwitch(
     std::unique_ptr<folly::AsyncUDPSocket> newSock) {
   if (!conn_->oneRttWriteCipher) {

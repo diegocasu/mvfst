@@ -171,6 +171,15 @@ class QuicClientTransport
       std::shared_ptr<ServerMigrationEventCallback> callback);
 
   /**
+   * Sets the factory used to create the scheduler for pool migration addresses.
+   * If not set, the default factory is used.
+   * @param factory  the factory.
+   * @return         true if the factory has been set, false otherwise.
+   */
+  bool setPoolMigrationAddressSchedulerFactory(
+      std::unique_ptr<PoolMigrationAddressSchedulerFactory> factory);
+
+  /**
    * Set callback for various transport stats (such as packet received, dropped
    * etc). Since the callback is invoked very frequently, it is
    * important that the implementation is efficient.

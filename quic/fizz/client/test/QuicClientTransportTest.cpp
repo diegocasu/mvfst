@@ -1035,6 +1035,20 @@ TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallback) {
   client->closeNow(folly::none);
 }
 
+TEST_F(QuicClientTransportTest, TestSetPoolMigrationAddressSchedulerFactory) {
+  EXPECT_FALSE(client->setPoolMigrationAddressSchedulerFactory(nullptr));
+  EXPECT_FALSE(client->getConn()
+                   .serverMigrationState.poolMigrationAddressSchedulerFactory);
+
+  auto factory = std::make_unique<MockPoolMigrationAddressSchedulerFactory>();
+  EXPECT_TRUE(
+      client->setPoolMigrationAddressSchedulerFactory(std::move(factory)));
+  EXPECT_TRUE(client->getConn()
+                  .serverMigrationState.poolMigrationAddressSchedulerFactory);
+
+  client->closeNow(folly::none);
+}
+
 TEST_F(QuicClientTransportTest, CloseSocketOnWriteError) {
   client->addNewPeerAddress(serverAddr);
   EXPECT_CALL(*sock, write(_, _)).WillOnce(SetErrnoAndReturn(EBADF, -1));

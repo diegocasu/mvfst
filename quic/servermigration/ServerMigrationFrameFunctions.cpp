@@ -1,3 +1,4 @@
+#include <quic/servermigration/DefaultPoolMigrationAddressSchedulerFactory.h>
 #include <quic/servermigration/ServerMigrationFrameFunctions.h>
 
 namespace {
@@ -351,7 +352,7 @@ void handlePoolMigrationAddressFrame(
   if (connectionState.serverMigrationState.protocolState &&
       connectionState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->migrationAddresses.count(frame.address)) {
+          ->addressScheduler->contains(frame.address)) {
     return;
   }
 
@@ -396,12 +397,20 @@ void handlePoolMigrationAddressFrame(
   if (connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState
         ->asPoolOfAddressesClientState()
-        ->migrationAddresses.insert(frame.address);
+        ->addressScheduler->insert(frame.address);
     return;
   }
 
-  quic::PoolOfAddressesClientState protocolState;
-  protocolState.migrationAddresses.insert(frame.address);
+  if (!connectionState.serverMigrationState
+           .poolMigrationAddressSchedulerFactory) {
+    connectionState.serverMigrationState.poolMigrationAddressSchedulerFactory =
+        std::make_unique<quic::DefaultPoolMigrationAddressSchedulerFactory>();
+  }
+
+  quic::PoolOfAddressesClientState protocolState(
+      connectionState.serverMigrationState.poolMigrationAddressSchedulerFactory
+          ->make());
+  protocolState.addressScheduler->insert(frame.address);
   connectionState.serverMigrationState.protocolState = std::move(protocolState);
 }
 

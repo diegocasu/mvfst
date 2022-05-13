@@ -77,6 +77,7 @@ add_dependencies(
   mvfst_flowcontrol
   mvfst_loss
   mvfst_server_migration_negotiator
+  mvfst_pool_migration_address_scheduling
 )
 
 target_link_libraries(
@@ -85,6 +86,7 @@ target_link_libraries(
   mvfst_flowcontrol
   mvfst_loss
   mvfst_server_migration_negotiator
+  mvfst_pool_migration_address_scheduling
 )
 
 file(

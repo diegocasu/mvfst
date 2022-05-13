@@ -13,6 +13,7 @@
 #include <quic/congestion_control/QuicCubic.h>
 #include <quic/flowcontrol/QuicFlowController.h>
 #include <quic/handshake/TransportParameters.h>
+#include <quic/servermigration/PoolMigrationAddressSchedulerFactory.h>
 #include <quic/servermigration/QuicServerMigrationNegotiatorClient.h>
 #include <quic/servermigration/management/Callbacks.h>
 #include <quic/state/QuicStateFunctions.h>
@@ -33,11 +34,14 @@ struct PendingClientData {
 };
 
 struct PoolOfAddressesClientState {
-  // Set of possible migration addresses.
-  std::unordered_set<QuicIPAddress, QuicIPAddressHash> migrationAddresses;
+  std::shared_ptr<PoolMigrationAddressScheduler> addressScheduler;
+
+  PoolOfAddressesClientState(
+      std::shared_ptr<PoolMigrationAddressScheduler> addressScheduler)
+      : addressScheduler(std::move(addressScheduler)) {}
 
   bool operator==(const PoolOfAddressesClientState& rhs) const {
-    return migrationAddresses == rhs.migrationAddresses;
+    return addressScheduler == rhs.addressScheduler;
   }
 
   bool operator!=(const PoolOfAddressesClientState& rhs) const {
@@ -126,6 +130,8 @@ struct QuicClientConnectionState : public QuicConnectionStateBase {
     folly::Optional<QuicServerMigrationNegotiatorClient> negotiator;
 
     // Protocol state.
+    std::unique_ptr<PoolMigrationAddressSchedulerFactory>
+        poolMigrationAddressSchedulerFactory;
     folly::Optional<QuicServerMigrationProtocolClientState> protocolState;
 
     // Largest packet number processed by the server migration layer.

@@ -51,6 +51,7 @@ target_compile_options(
 
 add_dependencies(
   mvfst_server_migration_frame_functions
+  mvfst_pool_migration_address_scheduling
   mvfst_codec_types
 )
 
@@ -60,6 +61,7 @@ target_link_libraries(
   mvfst_server_state
   mvfst_client_state
   mvfst_codec_types
+  mvfst_pool_migration_address_scheduling
 )
 
 add_library(
