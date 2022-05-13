@@ -48,3 +48,12 @@ quic_add_test(TARGET QuicServerMigrationIntegrationTest
   mvfst_exception
   mvfst_test_utils
 )
+
+quic_add_test(TARGET DefaultPoolMigrationAddressSchedulerTest
+  SOURCES
+  DefaultPoolMigrationAddressSchedulerTest.cpp
+  DEPENDS
+  Folly::folly
+  mvfst_pool_migration_address_scheduling
+  mvfst_exception
+)

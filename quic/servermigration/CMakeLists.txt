@@ -62,6 +62,36 @@ target_link_libraries(
   mvfst_codec_types
 )
 
+add_library(
+  mvfst_pool_migration_address_scheduling STATIC
+  DefaultPoolMigrationAddressScheduler.cpp
+)
+
+target_include_directories(
+  mvfst_pool_migration_address_scheduling PUBLIC
+  $<BUILD_INTERFACE:${QUIC_FBCODE_ROOT}>
+  $<INSTALL_INTERFACE:include/>
+)
+
+target_compile_options(
+  mvfst_pool_migration_address_scheduling
+  PRIVATE
+  ${_QUIC_COMMON_COMPILE_OPTIONS}
+)
+
+add_dependencies(
+  mvfst_pool_migration_address_scheduling
+  mvfst_codec_types
+  mvfst_exception
+)
+
+target_link_libraries(
+  mvfst_pool_migration_address_scheduling PUBLIC
+  Folly::folly
+  mvfst_codec_types
+  mvfst_exception
+)
+
 file(
   GLOB_RECURSE QUIC_API_HEADERS_TOINSTALL
   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -81,6 +111,12 @@ install(
 
 install(
   TARGETS mvfst_server_migration_frame_functions
+  EXPORT mvfst-exports
+  DESTINATION lib
+)
+
+install(
+  TARGETS mvfst_pool_migration_address_scheduling
   EXPORT mvfst-exports
   DESTINATION lib
 )
