@@ -65,6 +65,7 @@ target_link_libraries(
 add_library(
   mvfst_pool_migration_address_scheduling STATIC
   DefaultPoolMigrationAddressScheduler.cpp
+  DefaultPoolMigrationAddressSchedulerFactory.cpp
 )
 
 target_include_directories(
