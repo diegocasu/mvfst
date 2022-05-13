@@ -76,8 +76,9 @@ class QuicServerTransportTest : public QuicServerTransportTestBase {
     auto clientNegotiator =
         QuicServerMigrationNegotiatorClient(clientSupportedProtocols);
     auto serverNegotiator =
-        QuicServerMigrationNegotiatorServer(serverSupportedProtocols);
-    serverNegotiator.onMigrationSuiteReceived(
+        std::make_shared<QuicServerMigrationNegotiatorServer>(
+            serverSupportedProtocols);
+    serverNegotiator->onMigrationSuiteReceived(
         clientNegotiator.onTransportParametersEncoding());
     server->getNonConstConn().serverMigrationState.negotiator =
         std::move(serverNegotiator);

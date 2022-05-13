@@ -155,7 +155,7 @@ struct QuicServerConnectionState : public QuicConnectionStateBase {
     folly::Optional<ConnectionId> originalConnectionId;
 
     // Server migration protocol negotiator.
-    folly::Optional<QuicServerMigrationNegotiatorServer> negotiator;
+    std::shared_ptr<QuicServerMigrationNegotiatorServer> negotiator;
 
     // Protocol state.
     folly::Optional<PoolOfAddressesServerState::Pool>

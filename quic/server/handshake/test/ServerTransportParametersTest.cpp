@@ -267,8 +267,9 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
 
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
-  extension.setServerMigrationSuiteNegotiator(&negotiator);
+  auto negotiator =
+      std::make_shared<QuicServerMigrationNegotiatorServer>(supportedProtocols);
+  extension.setServerMigrationSuiteNegotiator(negotiator);
 
   auto clientHello = TestMessages::clientHello();
   ClientTransportParameters clientParams;
@@ -281,10 +282,10 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
       encodeExtension(clientParams, QuicVersion::MVFST));
 
   auto extensions = extension.getExtensions(clientHello);
-  ASSERT_TRUE(negotiator.getNegotiatedProtocols().has_value());
+  ASSERT_TRUE(negotiator->getNegotiatedProtocols().has_value());
   EXPECT_TRUE(
-      negotiator.getNegotiatedProtocols().value().size() == 1 &&
-      negotiator.getNegotiatedProtocols().value().count(
+      negotiator->getNegotiatedProtocols().value().size() == 1 &&
+      negotiator->getNegotiatedProtocols().value().count(
           ServerMigrationProtocol::EXPLICIT));
 
   auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
@@ -316,11 +317,12 @@ TEST(ServerTransportParametersTest, TestNoServerMigrationSuiteInClientHello) {
 
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
-  extension.setServerMigrationSuiteNegotiator(&negotiator);
+  auto negotiator =
+      std::make_shared<QuicServerMigrationNegotiatorServer>(supportedProtocols);
+  extension.setServerMigrationSuiteNegotiator(negotiator);
 
   auto extensions = extension.getExtensions(getClientHello(QuicVersion::MVFST));
-  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
+  EXPECT_TRUE(!negotiator->getNegotiatedProtocols());
 
   auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
   ASSERT_TRUE(serverParams.has_value());

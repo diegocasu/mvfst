@@ -757,7 +757,7 @@ void onServerReadDataFromOpen(
 
     if (conn.serverMigrationState.negotiator) {
       serverTransportParamsExtension->setServerMigrationSuiteNegotiator(
-          &conn.serverMigrationState.negotiator.value());
+          conn.serverMigrationState.negotiator);
     }
 
     QUIC_STATS(conn.statsCallback, onStatelessReset);

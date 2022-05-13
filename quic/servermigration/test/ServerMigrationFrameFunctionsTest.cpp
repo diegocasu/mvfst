@@ -37,7 +37,8 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
 
   void enableServerMigrationServerSide() {
     serverState.serverMigrationState.negotiator =
-        QuicServerMigrationNegotiatorServer(serverSupportedProtocols);
+        std::make_shared<QuicServerMigrationNegotiatorServer>(
+            serverSupportedProtocols);
   }
 
   void enableServerMigrationClientSide() {

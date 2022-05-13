@@ -146,7 +146,7 @@ bool QuicServerTransport::allowServerMigration(
     return false;
   }
   serverConn_->serverMigrationState.negotiator =
-      QuicServerMigrationNegotiatorServer(supportedProtocols);
+      std::make_shared<QuicServerMigrationNegotiatorServer>(supportedProtocols);
   return true;
 }
 

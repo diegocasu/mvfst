@@ -115,10 +115,9 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
           clientTransportParameters_->parameters,
           TransportParameterId::server_migration_suite);
       if (it != clientTransportParameters_->parameters.end()) {
-        serverMigrationNegotiator_.value()->onMigrationSuiteReceived(*it);
+        serverMigrationNegotiator_->onMigrationSuiteReceived(*it);
         customTransportParameters_.push_back(
-            serverMigrationNegotiator_.value()
-                ->onTransportParametersEncoding());
+            serverMigrationNegotiator_->onTransportParametersEncoding());
       }
     }
 
@@ -135,9 +134,10 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
   }
 
   void setServerMigrationSuiteNegotiator(
-      QuicServerMigrationNegotiatorServer* serverMigrationNegotiator) {
+      std::shared_ptr<QuicServerMigrationNegotiatorServer>
+          serverMigrationNegotiator) {
     if (serverMigrationNegotiator != nullptr) {
-      serverMigrationNegotiator_ = serverMigrationNegotiator;
+      serverMigrationNegotiator_ = std::move(serverMigrationNegotiator);
     }
   }
 
@@ -158,7 +158,7 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
   ConnectionId initialSourceCid_;
   ConnectionId originalDestinationCid_;
   std::vector<TransportParameter> customTransportParameters_;
-  folly::Optional<QuicServerMigrationNegotiatorServer*>
+  std::shared_ptr<QuicServerMigrationNegotiatorServer>
       serverMigrationNegotiator_;
 };
 } // namespace quic
