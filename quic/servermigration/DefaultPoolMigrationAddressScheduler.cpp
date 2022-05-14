@@ -44,21 +44,18 @@ const QuicIPAddress& DefaultPoolMigrationAddressScheduler::next() {
         LocalErrorCode::INTERNAL_ERROR);
   }
   if (!iterating_) {
-    // First call of a cycle, so try to return the server address.
+    // First call of a cycle, so merge the pending addresses, if any, and
+    // restart the cycle, possibly from the current server address.
     iterating_ = true;
+    pool_.merge(pendingAddresses_);
+    iterator_ = pool_.cbegin();
     if (!currentServerAddress_.isAllZero()) {
       return currentServerAddress_;
     }
   }
-  if (iterator_ == pool_.cend()) {
-    // The last iteration ended the cycle, so merge the pending addresses,
-    // if any, and restart the cycle from the first address of the pool.
-    pool_.merge(pendingAddresses_);
-    iterator_ = pool_.begin();
-  }
   auto& address = *iterator_;
   ++iterator_;
-  if (iterator_ == pool_.end()) {
+  if (iterator_ == pool_.cend()) {
     iterating_ = false;
   }
   return address;

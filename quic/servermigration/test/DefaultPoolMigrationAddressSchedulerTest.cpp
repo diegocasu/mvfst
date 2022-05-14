@@ -331,14 +331,14 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestMergePendingAddresses) {
   // Continue cycling.
   EXPECT_EQ(scheduler.next(), address4);
   EXPECT_EQ(scheduler.next(), serverAddress);
-  EXPECT_EQ(scheduler.next(), address2);
-  // Check expectations after finding address2.
+  // Check expectations after new cycle has started.
   EXPECT_EQ(scheduler.pool().size(), 3);
   EXPECT_TRUE(scheduler.pool().count(address2));
   EXPECT_TRUE(scheduler.pool().count(address3));
   EXPECT_TRUE(scheduler.pool().count(address4));
   EXPECT_TRUE(scheduler.pendingAddresses().empty());
   // Continue cycling.
+  EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
   EXPECT_EQ(scheduler.next(), address4);
 
@@ -356,8 +356,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestMergePendingAddresses) {
   // Restart.
   scheduler.restart();
   EXPECT_EQ(scheduler.next(), serverAddress);
-  EXPECT_EQ(scheduler.next(), address1);
-  // Check expectations after finding address1.
+  // Check expectations after new cycle has started.
   EXPECT_EQ(scheduler.pool().size(), 4);
   EXPECT_TRUE(scheduler.pool().count(address1));
   EXPECT_TRUE(scheduler.pool().count(address2));
@@ -365,6 +364,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestMergePendingAddresses) {
   EXPECT_TRUE(scheduler.pool().count(address4));
   EXPECT_TRUE(scheduler.pendingAddresses().empty());
   // Continue cycling.
+  EXPECT_EQ(scheduler.next(), address1);
   EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
   EXPECT_EQ(scheduler.next(), address4);
