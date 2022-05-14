@@ -345,6 +345,16 @@ void resetCongestionAndRttState(
   connectionState.lossState.mrtt = quic::kDefaultMinRtt;
 }
 
+void restoreCongestionAndRttState(
+    quic::QuicConnectionStateBase& connectionState,
+    quic::CongestionAndRttState state) {
+  connectionState.congestionController = std::move(state.congestionController);
+  connectionState.lossState.srtt = state.srtt;
+  connectionState.lossState.lrtt = state.lrtt;
+  connectionState.lossState.rttvar = state.rttvar;
+  connectionState.lossState.mrtt = state.mrtt;
+}
+
 void handlePoolMigrationAddressFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
@@ -640,6 +650,64 @@ void maybeUpdatePoolOfAddressesServerMigrationProbing(
   }
 }
 
+void maybeEndPoolOfAddressesServerMigrationProbing(
+    quic::QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  if (protocolState->probingFinished || !protocolState->probingInProgress) {
+    return;
+  }
+  if (peerAddress == protocolState->serverAddressBeforeProbing) {
+    // The PTO was due to a packet loss, not a server migration.
+    // Stop the probing and restore the congestion controller state.
+    connectionState.peerAddress = protocolState->serverAddressBeforeProbing;
+    protocolState->serverAddressBeforeProbing = folly::SocketAddress();
+    protocolState->probingInProgress = false;
+    protocolState->probingFinished = false;
+    protocolState->addressScheduler->restart();
+    protocolState->addressScheduler->setCurrentServerAddress(QuicIPAddress());
+    restoreCongestionAndRttState(
+        connectionState,
+        std::move(connectionState.serverMigrationState
+                      .previousCongestionAndRttStates.back()));
+    connectionState.serverMigrationState.previousCongestionAndRttStates
+        .pop_back();
+    return;
+  }
+  if (protocolState->addressScheduler->contains(peerAddress)) {
+    // Due to congestion/latency/loss, the packet could have been sent by an
+    // address already cycled by the scheduler, so update the peer address.
+    connectionState.peerAddress = peerAddress;
+    protocolState->serverAddressBeforeProbing = folly::SocketAddress();
+
+    // Set the migrationInProgress flag only after the new server address has
+    // been found, to avoid that POOL_MIGRATION_ADDRESS frames arriving during
+    // a false alarm, i.e. after a PTO not caused by migration, are mistaken
+    // for a protocol violation.
+    connectionState.serverMigrationState.migrationInProgress = true;
+
+    // Stop the probing.
+    protocolState->probingInProgress = false;
+    protocolState->probingFinished = true;
+    protocolState->addressScheduler->restart();
+    protocolState->addressScheduler->setCurrentServerAddress(QuicIPAddress());
+
+    // Start path validation. The retransmission of PATH_CHALLENGE frames
+    // is done automatically when a packet is marked as lost.
+    uint64_t pathData;
+    folly::Random::secureRandom(&pathData, sizeof(pathData));
+    connectionState.pendingEvents.pathChallenge =
+        quic::PathChallengeFrame(pathData);
+
+    // Set the anti-amplification limit for the non-validated path.
+    // This limit is automatically ignored after a path validation succeeds.
+    connectionState.pathValidationLimiter =
+        std::make_unique<quic::PendingPathRateLimiter>(
+            connectionState.udpSendPacketLen);
+  }
+}
+
 } // namespace
 
 namespace quic {
@@ -811,7 +879,8 @@ void maybeEndServerMigrationProbing(
       return;
     case QuicServerMigrationProtocolClientState::Type::
         PoolOfAddressesClientState:
-      // TODO end probing for PoA protocol
+      maybeEndPoolOfAddressesServerMigrationProbing(
+          connectionState, peerAddress);
       return;
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
     case QuicServerMigrationProtocolClientState::Type::

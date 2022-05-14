@@ -945,6 +945,164 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMig
   EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenNoProbingInProgress) {
+  QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
+  QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
+  QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
+  auto currentServerAddress = clientState.peerAddress;
+  poolMigrationAddressScheduler->setCurrentServerAddress(
+      QuicIPAddress(currentServerAddress));
+  poolMigrationAddressScheduler->insert(poolAddress1);
+  poolMigrationAddressScheduler->insert(poolAddress2);
+  poolMigrationAddressScheduler->insert(poolAddress3);
+  poolMigrationAddressScheduler->next(); // Returns currentServerAddress
+  poolMigrationAddressScheduler->next(); // Returns poolAddress1
+  clientState.peerAddress =
+      poolMigrationAddressScheduler->next()
+          .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.serverMigrationState.migrationInProgress = false;
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = currentServerAddress;
+  ASSERT_NE(currentServerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+
+  protocolState->probingFinished = true;
+  protocolState->probingInProgress = true;
+  maybeEndServerMigrationProbing(
+      clientState, poolAddress1.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      clientState.peerAddress, poolAddress2.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->getCurrentServerAddress(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(poolMigrationAddressScheduler->next(), poolAddress3);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+
+  protocolState->probingFinished = false;
+  protocolState->probingInProgress = false;
+  maybeEndServerMigrationProbing(
+      clientState, poolAddress1.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      clientState.peerAddress, poolAddress2.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->getCurrentServerAddress(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->next(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithCurrentServerAddress) {
+  QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
+  QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
+  QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
+  auto currentServerAddress = clientState.peerAddress;
+  poolMigrationAddressScheduler->setCurrentServerAddress(
+      QuicIPAddress(currentServerAddress));
+  poolMigrationAddressScheduler->insert(poolAddress1);
+  poolMigrationAddressScheduler->insert(poolAddress2);
+  poolMigrationAddressScheduler->insert(poolAddress3);
+  poolMigrationAddressScheduler->next(); // Returns currentServerAddress
+  poolMigrationAddressScheduler->next(); // Returns poolAddress1
+  clientState.peerAddress =
+      poolMigrationAddressScheduler->next()
+          .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.serverMigrationState.migrationInProgress = false;
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = currentServerAddress;
+  protocolState->probingFinished = false;
+  protocolState->probingInProgress = true;
+
+  ASSERT_NE(clientState.peerAddress, currentServerAddress);
+  maybeEndServerMigrationProbing(clientState, currentServerAddress);
+  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(
+      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
+  EXPECT_EQ(poolMigrationAddressScheduler->next(), poolAddress1);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithNewServerAddress) {
+  QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
+  QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
+  QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
+  auto currentServerAddress = clientState.peerAddress;
+  poolMigrationAddressScheduler->setCurrentServerAddress(
+      QuicIPAddress(currentServerAddress));
+  poolMigrationAddressScheduler->insert(poolAddress1);
+  poolMigrationAddressScheduler->insert(poolAddress2);
+  poolMigrationAddressScheduler->insert(poolAddress3);
+  poolMigrationAddressScheduler->next(); // Returns currentServerAddress
+  poolMigrationAddressScheduler->next(); // Returns poolAddress1
+  clientState.peerAddress =
+      poolMigrationAddressScheduler->next()
+          .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.serverMigrationState.migrationInProgress = false;
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = currentServerAddress;
+  protocolState->probingFinished = false;
+  protocolState->probingInProgress = true;
+
+  ASSERT_NE(
+      clientState.peerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  maybeEndServerMigrationProbing(
+      clientState, poolAddress1.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      clientState.peerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(
+      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
+  EXPECT_EQ(poolMigrationAddressScheduler->next(), poolAddress1);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
   clientState.serverMigrationState.protocolState =
