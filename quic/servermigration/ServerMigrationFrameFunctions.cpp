@@ -607,6 +607,39 @@ void maybeEndExplicitServerMigrationProbing(
           connectionState.udpSendPacketLen);
 }
 
+void maybeUpdatePoolOfAddressesServerMigrationProbing(
+    quic::QuicClientConnectionState& connectionState) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  if (protocolState->probingFinished) {
+    return;
+  }
+  if (!protocolState->probingInProgress) {
+    // First probe, so initialize the probing state.
+    auto congestionRttState = moveCurrentCongestionAndRttState(connectionState);
+    connectionState.serverMigrationState.previousCongestionAndRttStates
+        .emplace_back(std::move(congestionRttState));
+    protocolState->serverAddressBeforeProbing = connectionState.peerAddress;
+    protocolState->addressScheduler->setCurrentServerAddress(
+        QuicIPAddress(connectionState.peerAddress));
+    protocolState->probingInProgress = true;
+  }
+
+  resetCongestionAndRttState(connectionState);
+  auto nextProbingAddress = protocolState->addressScheduler->next();
+  connectionState.peerAddress =
+      connectionState.peerAddress.getIPAddress().isV4()
+      ? nextProbingAddress.getIPv4AddressAsSocketAddress()
+      : nextProbingAddress.getIPv6AddressAsSocketAddress();
+
+  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+    connectionState.serverMigrationState.serverMigrationEventCallback
+        ->onServerMigrationProbingStarted(
+            quic::ServerMigrationProtocol::POOL_OF_ADDRESSES,
+            connectionState.peerAddress);
+  }
+}
+
 } // namespace
 
 namespace quic {
@@ -757,7 +790,7 @@ void maybeUpdateServerMigrationProbing(
       return;
     case QuicServerMigrationProtocolClientState::Type::
         PoolOfAddressesClientState:
-      // TODO implement probing for PoA protocol
+      maybeUpdatePoolOfAddressesServerMigrationProbing(connectionState);
       return;
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
     case QuicServerMigrationProtocolClientState::Type::

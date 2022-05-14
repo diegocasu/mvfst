@@ -3,6 +3,7 @@
 #include <quic/fizz/server/handshake/FizzServerQuicHandshakeContext.h>
 #include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/servermigration/test/Mocks.h>
+#include <quic/servermigration/DefaultPoolMigrationAddressScheduler.h>
 
 using namespace testing;
 
@@ -18,6 +19,8 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
   std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
   std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
   DefaultCongestionControllerFactory congestionControllerFactory;
+  std::shared_ptr<DefaultPoolMigrationAddressScheduler>
+      poolMigrationAddressScheduler;
 
   void SetUp() override {
     serverState.serverConnectionId = ConnectionId::createRandom(8);
@@ -33,6 +36,8 @@ class QuicServerMigrationFrameFunctionsTest : public Test {
         congestionControllerFactory.makeCongestionController(
             serverState,
             serverState.transportSettings.defaultCongestionController);
+    poolMigrationAddressScheduler =
+        std::make_shared<DefaultPoolMigrationAddressScheduler>();
   }
 
   void enableServerMigrationServerSide() {
@@ -851,6 +856,93 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   EXPECT_TRUE(protocolState->probingFinished);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMigrationProbing) {
+  QuicIPAddress poolAddress(folly::IPAddressV4("1.1.1.1"), 1111);
+  auto currentServerAddress = clientState.peerAddress;
+  poolMigrationAddressScheduler->insert(poolAddress);
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted)
+      .Times(Exactly(2))
+      .WillOnce([&](ServerMigrationProtocol protocol,
+                    folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
+        EXPECT_EQ(probingAddress, currentServerAddress);
+      })
+      .WillOnce([&](ServerMigrationProtocol protocol,
+                    folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
+        EXPECT_EQ(probingAddress, poolAddress.getIPv4AddressAsSocketAddress());
+      });
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  ASSERT_TRUE(
+      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
+  ASSERT_NE(
+      clientState.peerAddress, poolAddress.getIPv4AddressAsSocketAddress());
+  ASSERT_FALSE(protocolState->probingInProgress);
+  ASSERT_FALSE(protocolState->probingFinished);
+  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+
+  // Test when the probing is finished.
+  protocolState->probingFinished = true;
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_TRUE(
+      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
+  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  protocolState->probingFinished = false;
+
+  // Test start of the probing.
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->getCurrentServerAddress(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 10us;
+  clientState.lossState.rttvar = 10us;
+  clientState.lossState.mrtt = kDefaultInitialRtt;
+
+  // Test with probing already in progress.
+  ASSERT_TRUE(protocolState->probingInProgress);
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->getCurrentServerAddress(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(
+      clientState.peerAddress, poolAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {

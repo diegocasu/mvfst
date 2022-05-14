@@ -35,13 +35,19 @@ struct PendingClientData {
 
 struct PoolOfAddressesClientState {
   std::shared_ptr<PoolMigrationAddressScheduler> addressScheduler;
+  folly::SocketAddress serverAddressBeforeProbing;
+  bool probingInProgress{false};
+  bool probingFinished{false};
 
   PoolOfAddressesClientState(
       std::shared_ptr<PoolMigrationAddressScheduler> addressScheduler)
       : addressScheduler(std::move(addressScheduler)) {}
 
   bool operator==(const PoolOfAddressesClientState& rhs) const {
-    return addressScheduler == rhs.addressScheduler;
+    return addressScheduler == rhs.addressScheduler &&
+        serverAddressBeforeProbing == rhs.serverAddressBeforeProbing &&
+        probingInProgress == rhs.probingInProgress &&
+        probingFinished == rhs.probingFinished;
   }
 
   bool operator!=(const PoolOfAddressesClientState& rhs) const {

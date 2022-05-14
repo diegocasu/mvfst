@@ -658,7 +658,8 @@ void QuicClientTransport::processPacketData(
   }
 
   if (clientConn_->serverMigrationState.protocolState &&
-      clientConn_->serverMigrationState.migrationInProgress &&
+      !clientConn_->serverMigrationState.protocolState
+           ->asSynchronizedSymmetricClientState() &&
       isNonProbingPacket) {
     // This packet could be the first one sent by the server after a migration,
     // so check if an ongoing probing, performed as part of the Explicit or PoA
@@ -668,11 +669,8 @@ void QuicClientTransport::processPacketData(
     // that a path validation is started immediately even if packets from the
     // new address arrive out of order, or there are losses, or the server
     // maliciously never sends an acknowledgement for a probe.
-    // Note also that (conn_->peerAddress == peer) if the Explicit or PoA
-    // probing is already in progress.
     maybeEndServerMigrationProbing(*clientConn_, peer);
-  }
-  if (conn_->peerAddress != peer && isNonProbingPacket) {
+  } else if (conn_->peerAddress != peer && isNonProbingPacket) {
     // Same reasoning of the previous case, but this time related to the
     // Symmetric and Synchronized Symmetric protocols. Here, the first packet
     // from the new server address could not contain a SERVER_MIGRATED frame.
