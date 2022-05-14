@@ -31,6 +31,7 @@ class PoolMigrationAddressScheduler {
 
   /**
    * Returns true if the scheduler contains the given address.
+   * It considers only addresses added with insert().
    * @param address  the address.
    * @return         true if the scheduler contains the given address,
    *                 false otherwise.

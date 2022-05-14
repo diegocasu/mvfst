@@ -370,5 +370,35 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestMergePendingAddresses) {
   EXPECT_EQ(scheduler.next(), address4);
 }
 
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestContains) {
+  QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
+  QuicIPAddress address2(folly::SocketAddress("2.2.2.2", 2222));
+  QuicIPAddress address3(folly::SocketAddress("3.3.3.3", 3333));
+  ASSERT_FALSE(scheduler.contains(address1));
+  ASSERT_FALSE(scheduler.contains(address2));
+  ASSERT_FALSE(scheduler.contains(address3));
+
+  // Insert addresses before cycling, so that they end up inside pool_.
+  scheduler.insert(address1);
+  scheduler.insert(address2);
+  ASSERT_EQ(scheduler.pool().size(), 2);
+  ASSERT_TRUE(scheduler.pool().count(address1));
+  ASSERT_TRUE(scheduler.pool().count(address2));
+  ASSERT_TRUE(scheduler.pendingAddresses().empty());
+  EXPECT_TRUE(scheduler.contains(address1));
+  EXPECT_TRUE(scheduler.contains(address2));
+
+  // Insert addresses while cycling, so that they
+  // end up inside pendingAddresses_.
+  scheduler.next();
+  scheduler.insert(address3);
+  ASSERT_EQ(scheduler.pool().size(), 2);
+  ASSERT_TRUE(scheduler.pool().count(address1));
+  ASSERT_TRUE(scheduler.pool().count(address2));
+  ASSERT_EQ(scheduler.pendingAddresses().size(), 1);
+  ASSERT_TRUE(scheduler.pendingAddresses().count(address3));
+  EXPECT_TRUE(scheduler.contains(address3));
+}
+
 } // namespace test
 } // namespace quic

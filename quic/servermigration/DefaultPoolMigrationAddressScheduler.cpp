@@ -19,7 +19,7 @@ DefaultPoolMigrationAddressScheduler::getCurrentServerAddress() {
 
 bool DefaultPoolMigrationAddressScheduler::contains(
     const QuicIPAddress& address) {
-  return pool_.count(address);
+  return pool_.count(address) || pendingAddresses_.count(address);
 }
 
 void DefaultPoolMigrationAddressScheduler::insert(QuicIPAddress address) {
