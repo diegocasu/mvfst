@@ -573,7 +573,6 @@ void maybeUpdateExplicitServerMigrationProbing(
             quic::ServerMigrationProtocol::EXPLICIT,
             connectionState.peerAddress);
   }
-  return;
 }
 
 void maybeEndExplicitServerMigrationProbing(
