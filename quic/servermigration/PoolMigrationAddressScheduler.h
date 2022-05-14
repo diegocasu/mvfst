@@ -43,10 +43,9 @@ class PoolMigrationAddressScheduler {
   virtual void restart() = 0;
 
   /**
-   * Sets the current address of the server. It should be called every
-   * time the target address of the migration probing changes.
+   * Sets the current address of the server.
    * @param address  the current address of the server.
-   *                 It must not be an all-zero address.
+   *                 If all-zero, it resets the address.
    */
   virtual void setCurrentServerAddress(QuicIPAddress address) = 0;
 

@@ -48,7 +48,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddressWithAllZero
   QuicIPAddress emptyAddress;
   ASSERT_TRUE(emptyAddress.isAllZero());
   scheduler.setCurrentServerAddress(emptyAddress);
-  EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress);
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), emptyAddress);
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestGetServerAddress) {

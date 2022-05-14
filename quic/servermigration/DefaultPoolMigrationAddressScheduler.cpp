@@ -9,9 +9,7 @@ DefaultPoolMigrationAddressScheduler::DefaultPoolMigrationAddressScheduler() {
 
 void DefaultPoolMigrationAddressScheduler::setCurrentServerAddress(
     QuicIPAddress address) {
-  if (!address.isAllZero()) {
-    currentServerAddress_ = std::move(address);
-  }
+  currentServerAddress_ = std::move(address);
 }
 
 const QuicIPAddress&
