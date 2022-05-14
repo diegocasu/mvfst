@@ -19,6 +19,9 @@ class TestingDefaultPoolMigrationAddressScheduler
   const std::set<QuicIPAddress>& pendingAddresses() {
     return pendingAddresses_;
   }
+  const std::unordered_set<folly::SocketAddress>& socketAddresses() {
+    return socketAddresses_;
+  }
   bool iterating() {
     return iterating_;
   }
@@ -57,6 +60,26 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestGetServerAddress) {
   QuicIPAddress newServerAddress(folly::SocketAddress("1.2.3.4", 1234));
   scheduler.setCurrentServerAddress(newServerAddress);
   EXPECT_EQ(scheduler.getCurrentServerAddress(), newServerAddress);
+}
+
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestInsertSocketAddresses) {
+  QuicIPAddress addressWithBothVersions(
+      folly::IPAddressV4("1.2.3.4"), 1234, folly::IPAddressV6("::1"), 1111);
+  QuicIPAddress addressV4(folly::IPAddressV4("5.6.7.8"), 5678);
+  QuicIPAddress addressV6(folly::IPAddressV6("::2"), 2222);
+  ASSERT_TRUE(scheduler.socketAddresses().empty());
+  scheduler.insert(addressWithBothVersions);
+  scheduler.insert(addressV4);
+  scheduler.insert(addressV6);
+  EXPECT_EQ(scheduler.socketAddresses().size(), 4);
+  EXPECT_TRUE(scheduler.socketAddresses().count(
+      addressWithBothVersions.getIPv4AddressAsSocketAddress()));
+  EXPECT_TRUE(scheduler.socketAddresses().count(
+      addressWithBothVersions.getIPv6AddressAsSocketAddress()));
+  EXPECT_TRUE(scheduler.socketAddresses().count(
+      addressV4.getIPv4AddressAsSocketAddress()));
+  EXPECT_TRUE(scheduler.socketAddresses().count(
+      addressV6.getIPv6AddressAsSocketAddress()));
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestInsertWithAllZero) {
@@ -370,7 +393,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestMergePendingAddresses) {
   EXPECT_EQ(scheduler.next(), address4);
 }
 
-TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestContains) {
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestContainsQuicIPAddress) {
   QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
   QuicIPAddress address2(folly::SocketAddress("2.2.2.2", 2222));
   QuicIPAddress address3(folly::SocketAddress("3.3.3.3", 3333));
@@ -397,6 +420,33 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestContains) {
   ASSERT_TRUE(scheduler.pool().count(address2));
   ASSERT_EQ(scheduler.pendingAddresses().size(), 1);
   ASSERT_TRUE(scheduler.pendingAddresses().count(address3));
+  EXPECT_TRUE(scheduler.contains(address3));
+}
+
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestContainsSocketAddress) {
+  folly::SocketAddress address1("1.1.1.1", 1111);
+  folly::SocketAddress address2("2.2.2.2", 2222);
+  folly::SocketAddress address3("::5", 5555);
+  ASSERT_FALSE(scheduler.contains(address1));
+  ASSERT_FALSE(scheduler.contains(address2));
+  ASSERT_FALSE(scheduler.contains(address3));
+
+  // Insert addresses before cycling.
+  scheduler.insert(QuicIPAddress(address1));
+  scheduler.insert(QuicIPAddress(address2));
+  ASSERT_EQ(scheduler.socketAddresses().size(), 2);
+  ASSERT_TRUE(scheduler.socketAddresses().count(address1));
+  ASSERT_TRUE(scheduler.socketAddresses().count(address2));
+  EXPECT_TRUE(scheduler.contains(address1));
+  EXPECT_TRUE(scheduler.contains(address2));
+
+  // Insert addresses while cycling.
+  scheduler.next();
+  scheduler.insert(QuicIPAddress(address3));
+  ASSERT_EQ(scheduler.socketAddresses().size(), 3);
+  ASSERT_TRUE(scheduler.socketAddresses().count(address1));
+  ASSERT_TRUE(scheduler.socketAddresses().count(address2));
+  ASSERT_TRUE(scheduler.socketAddresses().count(address3));
   EXPECT_TRUE(scheduler.contains(address3));
 }
 

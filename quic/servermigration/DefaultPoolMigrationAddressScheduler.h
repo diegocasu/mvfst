@@ -2,6 +2,7 @@
 
 #include <quic/servermigration/PoolMigrationAddressScheduler.h>
 #include <set>
+#include <unordered_set>
 
 namespace quic {
 
@@ -10,12 +11,16 @@ namespace quic {
  * on the relational operator "<" defined by QuicIPAddress, with the exception
  * of the current server address, which is always the first address returned
  * by next() in each cycle, if set.
- * This scheduler uses an std::set to manage the addresses, thus the complexity
- * of the insert() and contain() operations is the same of insert() and count()
- * offered by std::set, respectively. The insertion of an address while cycling
- * the pool does not alter the current cycle, i.e. the insertion has effect
- * only starting from the next cycle. This rule affects also the insertion or
- * modification of the current server address.
+ * This scheduler uses both an std::set and an std::unordered_set to manage
+ * the addresses, thus:
+ * 1) the complexity of insert() and contains(const QuicIPAddress& address) is
+ * the same of insert() and count() offered by std::set, respectively;
+ * 2) the complexity of contains(const folly::SocketAddress& address) is the
+ * same of count() offered by std::unordered_set.
+ * The insertion of an address while cycling the pool does not alter the
+ * current cycle, i.e. the insertion has effect only starting from the next
+ * cycle. This rule affects also the insertion or modification of the
+ * current server address.
  */
 class DefaultPoolMigrationAddressScheduler
     : public PoolMigrationAddressScheduler {
@@ -38,6 +43,8 @@ class DefaultPoolMigrationAddressScheduler
 
   bool contains(const QuicIPAddress& address) override;
 
+  bool contains(const folly::SocketAddress& address) override;
+
   void restart() override;
 
   void setCurrentServerAddress(QuicIPAddress address) override;
@@ -48,6 +55,7 @@ class DefaultPoolMigrationAddressScheduler
   QuicIPAddress currentServerAddress_;
   std::set<QuicIPAddress> pool_;
   std::set<QuicIPAddress> pendingAddresses_;
+  std::unordered_set<folly::SocketAddress> socketAddresses_;
   bool iterating_{false};
   std::set<QuicIPAddress>::iterator iterator_;
 };

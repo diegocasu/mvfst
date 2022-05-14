@@ -39,6 +39,16 @@ class PoolMigrationAddressScheduler {
   virtual bool contains(const QuicIPAddress& address) = 0;
 
   /**
+   * Returns true if the scheduler contains at least one QuicIPAddress
+   * specifying the given socket address. It considers only addresses
+   * added with insert().
+   * @param address  the socket address.
+   * @return         if the scheduler contains at least one QuicIPAddress
+   *                 specifying the given socket address, false otherwise.
+   */
+  virtual bool contains(const folly::SocketAddress& address) = 0;
+
+  /**
    * Restarts the cycle from the beginning.
    */
   virtual void restart() = 0;

@@ -22,9 +22,20 @@ bool DefaultPoolMigrationAddressScheduler::contains(
   return pool_.count(address) || pendingAddresses_.count(address);
 }
 
+bool DefaultPoolMigrationAddressScheduler::contains(
+    const folly::SocketAddress& address) {
+  return socketAddresses_.count(address);
+}
+
 void DefaultPoolMigrationAddressScheduler::insert(QuicIPAddress address) {
   if (address.isAllZero()) {
     return;
+  }
+  if (address.hasIPv4Field()) {
+    socketAddresses_.emplace(address.getIPv4AddressAsSocketAddress());
+  }
+  if (address.hasIPv6Field()) {
+    socketAddresses_.emplace(address.getIPv6AddressAsSocketAddress());
   }
   if (!iterating_) {
     pool_.emplace(std::move(address));
