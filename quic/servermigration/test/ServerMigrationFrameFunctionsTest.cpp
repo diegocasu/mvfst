@@ -765,7 +765,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
       clientState.peerAddress);
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_FALSE(clientState.pendingEvents.sendPing);
   ASSERT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
@@ -794,11 +793,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   EXPECT_EQ(clientState.lossState.lrtt, 0us);
   EXPECT_EQ(clientState.lossState.rttvar, 0us);
   EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
-  // Compare pointers to detect that a new congestion controller has been set.
-  EXPECT_NE(
-      clientState.congestionController,
-      clientState.serverMigrationState.previousCongestionAndRttStates.at(0)
-          .congestionController);
 
   // Test with probing already in progress.
   ASSERT_TRUE(protocolState->probingInProgress);
