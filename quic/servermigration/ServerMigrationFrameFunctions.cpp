@@ -796,8 +796,13 @@ void endServerMigration(
   connectionState.serverMigrationState.migrationInProgress = false;
   connectionState.serverMigrationState.numberOfMigrations += 1;
 
-  // Clear the protocol state, so that future migrations are possible.
-  connectionState.serverMigrationState.protocolState.clear();
+  // Clear the protocol state, so that future migrations are possible. The only
+  // exception is when Pool of Addresses is used, since the pool must be
+  // preserved across migrations.
+  if (!connectionState.serverMigrationState.protocolState
+           ->asPoolOfAddressesClientState()) {
+    connectionState.serverMigrationState.protocolState.clear();
+  }
 
   // Removing the path limiter is not strictly necessary, since it is
   // ignored once the validation succeeded, but do it for clarity.
@@ -823,8 +828,13 @@ void endServerMigration(
   CHECK(connectionState.serverMigrationState.protocolState);
   connectionState.serverMigrationState.migrationInProgress = false;
 
-  // Clear the protocol state, so that future migrations are possible.
-  connectionState.serverMigrationState.protocolState.clear();
+  // Clear the protocol state, so that future migrations are possible. The only
+  // exception is when Pool of Addresses is used, since the pool must be
+  // preserved across migrations.
+  if (!connectionState.serverMigrationState.protocolState
+           ->asPoolOfAddressesServerState()) {
+    connectionState.serverMigrationState.protocolState.clear();
+  }
 
   // Update the largest processed server migration acknowledgement to
   // record the one that ended the migration.

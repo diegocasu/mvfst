@@ -906,5 +906,22 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationServerSide) 
   EXPECT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 1);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearPoolOfAddressesState) {
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
+  endServerMigration(clientState, 1);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesClientState());
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  serverState.serverMigrationState.largestProcessedPacketNumber = 0;
+  endServerMigration(serverState, 1);
+  EXPECT_TRUE(serverState.serverMigrationState.protocolState);
+  EXPECT_TRUE(serverState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesServerState());
+}
+
 } // namespace test
 } // namespace quic
