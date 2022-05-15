@@ -1132,5 +1132,165 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   server.server->shutdown();
 }
 
+TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 1234));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.2"), 4567));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.3"), 8910));
+  poolMigrationAddresses.insert(
+      QuicIPAddress(folly::IPAddressV4("127.1.1.4"), 1112));
+  std::string serverCidHex;
+
+  auto clientStateUpdateCallback =
+      std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](folly::SocketAddress clientAddress,
+                    ConnectionId serverConnectionId,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        EXPECT_EQ(clientAddress, folly::SocketAddress(clientIP, clientPort));
+        ASSERT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_EQ(negotiatedProtocols->size(), 1);
+        EXPECT_TRUE(negotiatedProtocols->count(
+            ServerMigrationProtocol::POOL_OF_ADDRESSES));
+        serverCidHex = serverConnectionId.hex();
+      });
+  EXPECT_CALL(
+      *serverMigrationEventCallbackClientSide, onPoolMigrationAddressReceived)
+      .Times(Exactly(poolMigrationAddresses.size()))
+      .WillRepeatedly([&](PoolMigrationAddressFrame frame) {
+        auto it = poolMigrationAddresses.find(frame.address);
+        EXPECT_NE(it, poolMigrationAddresses.end());
+      });
+  EXPECT_CALL(
+      *serverMigrationEventCallbackServerSide,
+      onPoolMigrationAddressAckReceived)
+      .Times(Exactly(poolMigrationAddresses.size()))
+      .WillRepeatedly([&](ConnectionId serverConnectionId,
+                          PoolMigrationAddressFrame frame) {
+        EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+        auto it = poolMigrationAddresses.find(frame.address);
+        EXPECT_NE(it, poolMigrationAddresses.end());
+      });
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      clientStateUpdateCallback,
+      serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  QuicServerMigrationIntegrationTestClient client(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      serverMigrationEventCallbackClientSide);
+  client.start();
+  client.startDone_.wait();
+
+  client.send("ping");
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
+  Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackClientSide.get());
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackServerSide.get());
+
+  // Before starting the migration, wait a bit to be sure that the ACK for the
+  // echo message is received by the server. This avoids a particular case where
+  // the call to onNetworkSwitch() happens before the server receives the ACK,
+  // causing a PTO in the server just after the migration. Due to the PTO, the
+  // server sends a PING message from the new address, right in the middle of
+  // the migration probing done by the client, concluding it and forcing the
+  // client to send a PATH_CHALLENGE. This behaviour is correct and satisfies
+  // the requirements of the Pool of Addresses protocol, but "hides" the
+  // migration probing in the network traces, so it is better to avoid it in
+  // this context. Note that the test succeeds even if the waiting is removed.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  // Notify imminent server migration.
+  folly::Baton serverMigrationReadyBaton;
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
+      .Times(0);
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationReady)
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId) {
+        EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
+        serverMigrationReadyBaton.post();
+      });
+
+  server.server->onImminentServerMigration(
+      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+  EXPECT_TRUE(serverMigrationReadyBaton.try_wait_for(batonTimeout));
+  serverMigrationReadyBaton.reset();
+  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
+
+  // Start the migration.
+  folly::Baton serverMigrationCompletedBaton;
+  EXPECT_CALL(
+      *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
+      .Times(AtMost(poolMigrationAddresses.size() + 1))
+      .WillOnce([&](ServerMigrationProtocol protocol,
+                    folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
+        EXPECT_EQ(probingAddress, folly::SocketAddress(serverIP, serverPort));
+      })
+      .WillRepeatedly([&](ServerMigrationProtocol protocol,
+                          folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
+        auto it = poolMigrationAddresses.find(QuicIPAddress(probingAddress));
+        EXPECT_NE(it, poolMigrationAddresses.end());
+      });
+  EXPECT_CALL(
+      *serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
+      .Times(Exactly(1));
+  EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
+      .Times(0);
+  EXPECT_CALL(
+      *serverMigrationEventCallbackServerSide, onServerMigrationCompleted(_))
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId) {
+        EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
+        serverMigrationCompletedBaton.post();
+      });
+
+  folly::SocketAddress serverMigrationAddress("127.1.1.4", 1112);
+  ASSERT_TRUE(
+      poolMigrationAddresses.count(QuicIPAddress(serverMigrationAddress)));
+  ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+  server.server->onNetworkSwitch(serverMigrationAddress);
+  client.send("migration");
+  EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
+  serverMigrationCompletedBaton.reset();
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
+  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
+  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
+
+  EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId) {
+        EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
+      });
+  client.close();
+  server.server->shutdown();
+}
+
 } // namespace test
 } // namespace quic
