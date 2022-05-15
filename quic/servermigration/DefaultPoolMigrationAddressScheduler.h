@@ -43,9 +43,14 @@ class DefaultPoolMigrationAddressScheduler
   void insert(QuicIPAddress address) override;
 
   /**
-   * Returns the next address in the cycle, advancing it.
-   * It throws a QuicInternalException exception if, taking into consideration
-   * only the addresses added with insert(), the scheduler is empty.
+   * Returns the next address in the cycle, advancing it. If an address added
+   * with insert() is equal to the current server address, this method
+   * guarantees that it will be returned only once per cycle (at the beginning).
+   * It throws a QuicInternalException exception if the scheduler is empty,
+   * namely if one of the following conditions is true:
+   * 1) no address has been added with insert();
+   * 2) one address has been added with insert(), but it is equal to the
+   * current server address.
    * @return  the next address in the cycle.
    */
   const QuicIPAddress& next() override;
@@ -68,6 +73,7 @@ class DefaultPoolMigrationAddressScheduler
 
  protected:
   QuicIPAddress currentServerAddress_;
+  QuicIPAddress pendingServerAddress_;
   std::set<QuicIPAddress> pool_;
   std::set<QuicIPAddress> pendingAddresses_;
   std::unordered_set<folly::SocketAddress> socketAddresses_;

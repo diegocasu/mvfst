@@ -9,7 +9,12 @@ DefaultPoolMigrationAddressScheduler::DefaultPoolMigrationAddressScheduler() {
 
 void DefaultPoolMigrationAddressScheduler::setCurrentServerAddress(
     QuicIPAddress address) {
-  currentServerAddress_ = std::move(address);
+  if (!iterating_) {
+    currentServerAddress_ = std::move(address);
+    pendingServerAddress_ = currentServerAddress_;
+    return;
+  }
+  pendingServerAddress_ = std::move(address);
 }
 
 const QuicIPAddress&
@@ -47,7 +52,8 @@ void DefaultPoolMigrationAddressScheduler::insert(QuicIPAddress address) {
 }
 
 const QuicIPAddress& DefaultPoolMigrationAddressScheduler::next() {
-  if (pool_.empty()) {
+  if (pool_.empty() ||
+      (pool_.size() == 1 && pool_.count(currentServerAddress_))) {
     throw QuicInternalException(
         "Attempt to iterate through an empty address pool",
         LocalErrorCode::INTERNAL_ERROR);
@@ -56,6 +62,7 @@ const QuicIPAddress& DefaultPoolMigrationAddressScheduler::next() {
     // First call of a cycle, so merge the pending addresses, if any, and
     // restart the cycle, possibly from the current server address.
     iterating_ = true;
+    currentServerAddress_ = pendingServerAddress_;
     pool_.merge(pendingAddresses_);
     iterator_ = pool_.cbegin();
     if (!currentServerAddress_.isAllZero()) {
@@ -66,6 +73,10 @@ const QuicIPAddress& DefaultPoolMigrationAddressScheduler::next() {
   ++iterator_;
   if (iterator_ == pool_.cend()) {
     iterating_ = false;
+  }
+  if (address == currentServerAddress_) {
+    // Skip this iteration.
+    return next();
   }
   return address;
 }

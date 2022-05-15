@@ -13,6 +13,9 @@ class TestingDefaultPoolMigrationAddressScheduler
   const QuicIPAddress& currentServerAddress() {
     return currentServerAddress_;
   }
+  const QuicIPAddress pendingServerAddress() {
+    return pendingServerAddress_;
+  }
   const std::set<QuicIPAddress>& pool() {
     return pool_;
   }
@@ -40,18 +43,22 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddress) {
   QuicIPAddress serverAddress2(folly::SocketAddress("5.6.7.8", 5678));
   scheduler.setCurrentServerAddress(serverAddress1);
   EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress1);
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress1);
   scheduler.setCurrentServerAddress(serverAddress2);
   EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress2);
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress2);
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddressWithAllZero) {
   QuicIPAddress serverAddress(folly::SocketAddress("1.2.3.4", 1234));
   scheduler.setCurrentServerAddress(serverAddress);
   ASSERT_EQ(scheduler.getCurrentServerAddress(), serverAddress);
+  ASSERT_EQ(scheduler.pendingServerAddress(), serverAddress);
   QuicIPAddress emptyAddress;
   ASSERT_TRUE(emptyAddress.isAllZero());
   scheduler.setCurrentServerAddress(emptyAddress);
-  EXPECT_EQ(scheduler.getCurrentServerAddress(), emptyAddress);
+  EXPECT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  EXPECT_TRUE(scheduler.pendingServerAddress().isAllZero());
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestGetServerAddress) {
@@ -110,6 +117,15 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestNextWithEmptyPool) {
       QuicIPAddress(folly::SocketAddress("1.2.3.4", 1234)));
   ASSERT_FALSE(scheduler.getCurrentServerAddress().isAllZero());
   EXPECT_THROW(scheduler.next(), QuicInternalException);
+}
+
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestNextWithPoolContainingOnlyCurrentServerAddress) {
+  QuicIPAddress serverAddress(folly::SocketAddress("1.2.3.4", 1234));
+  scheduler.insert(serverAddress);
+  scheduler.setCurrentServerAddress(serverAddress);
+  EXPECT_THROW(scheduler.next(), QuicInternalException);
+  scheduler.setCurrentServerAddress(QuicIPAddress());
+  EXPECT_NO_THROW(scheduler.next());
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestInsertWhileIterating) {
@@ -226,6 +242,120 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestCycleWithoutServerAddress) 
   EXPECT_TRUE(scheduler.pendingAddresses().empty());
 }
 
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestAvoidSchedulingTwiceWhenPoolAddressIsAlsoCurrentServerAddress) {
+  QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
+  QuicIPAddress address2(folly::SocketAddress("2.2.2.2", 2222));
+  QuicIPAddress address3(folly::SocketAddress("3.3.3.3", 3333));
+  scheduler.insert(address3);
+  scheduler.insert(address2);
+  scheduler.insert(address1);
+  scheduler.setCurrentServerAddress(address3);
+
+  ASSERT_EQ(scheduler.getCurrentServerAddress(), address3);
+  ASSERT_EQ(scheduler.pendingServerAddress(), address3);
+  ASSERT_EQ(scheduler.pool().size(), 3);
+  ASSERT_TRUE(scheduler.pool().count(address1));
+  ASSERT_TRUE(scheduler.pool().count(address2));
+  ASSERT_TRUE(scheduler.pool().count(address3));
+  ASSERT_TRUE(scheduler.pendingAddresses().empty());
+
+  // Perform two complete cycles.
+  EXPECT_EQ(scheduler.next(), address3);
+  EXPECT_EQ(scheduler.next(), address1);
+  EXPECT_EQ(scheduler.next(), address2);
+  EXPECT_EQ(scheduler.next(), address3);
+  EXPECT_EQ(scheduler.next(), address1);
+  EXPECT_EQ(scheduler.next(), address2);
+
+  EXPECT_EQ(scheduler.pool().size(), 3);
+  EXPECT_TRUE(scheduler.pool().count(address1));
+  EXPECT_TRUE(scheduler.pool().count(address2));
+  EXPECT_TRUE(scheduler.pool().count(address3));
+  EXPECT_TRUE(scheduler.pendingAddresses().empty());
+}
+
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestAvoidNoSchedulingWhenPoolAddressIsAlsoCurrentServerAddress) {
+  QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
+  QuicIPAddress address2(folly::SocketAddress("2.2.2.2", 2222));
+  QuicIPAddress address3(folly::SocketAddress("3.3.3.3", 3333));
+  scheduler.insert(address3);
+  scheduler.insert(address2);
+  scheduler.insert(address1);
+
+  ASSERT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  ASSERT_TRUE(scheduler.pendingServerAddress().isAllZero());
+  ASSERT_EQ(scheduler.pool().size(), 3);
+  ASSERT_TRUE(scheduler.pool().count(address1));
+  ASSERT_TRUE(scheduler.pool().count(address2));
+  ASSERT_TRUE(scheduler.pool().count(address3));
+  ASSERT_TRUE(scheduler.pendingAddresses().empty());
+
+  // Perform two complete cycles. In the first one, the current server
+  // address is set to be address3, so equal to an address of the pool, while
+  // iterating: this should not cancel the scheduling of address3 as last
+  // address, because the setting was done during the cycle.
+  // In the second one, the setting should be applied, so address3 should
+  // appear only once and as the first element.
+  EXPECT_EQ(scheduler.next(), address1);
+  scheduler.setCurrentServerAddress(address3);
+  EXPECT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  EXPECT_EQ(scheduler.pendingServerAddress(), address3);
+  EXPECT_EQ(scheduler.next(), address2);
+  EXPECT_EQ(scheduler.next(), address3);
+
+  EXPECT_EQ(scheduler.next(), address3);
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), address3);
+  EXPECT_EQ(scheduler.pendingServerAddress(), address3);
+  EXPECT_EQ(scheduler.next(), address1);
+  EXPECT_EQ(scheduler.next(), address2);
+
+  EXPECT_EQ(scheduler.pool().size(), 3);
+  EXPECT_TRUE(scheduler.pool().count(address1));
+  EXPECT_TRUE(scheduler.pool().count(address2));
+  EXPECT_TRUE(scheduler.pool().count(address3));
+  EXPECT_TRUE(scheduler.pendingAddresses().empty());
+}
+
+TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestAvoidSchedulingTwiceWhenCurrentServerAddressIsGoingToBeReplaced) {
+  QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
+  QuicIPAddress address2(folly::SocketAddress("2.2.2.2", 2222));
+  QuicIPAddress address3(folly::SocketAddress("3.3.3.3", 3333));
+  scheduler.insert(address3);
+  scheduler.insert(address2);
+  scheduler.insert(address1);
+  scheduler.setCurrentServerAddress(address3);
+
+  ASSERT_EQ(scheduler.getCurrentServerAddress(), address3);
+  ASSERT_EQ(scheduler.pendingServerAddress(), address3);
+  ASSERT_EQ(scheduler.pool().size(), 3);
+  ASSERT_TRUE(scheduler.pool().count(address1));
+  ASSERT_TRUE(scheduler.pool().count(address2));
+  ASSERT_TRUE(scheduler.pool().count(address3));
+  ASSERT_TRUE(scheduler.pendingAddresses().empty());
+
+  // Perform two complete cycles. In the first one, the current server address
+  // (address3) is replaced while iterating, but nonetheless address3 should
+  // never be scheduled twice during the same cycle.
+  EXPECT_EQ(scheduler.next(), address3);
+  scheduler.setCurrentServerAddress(QuicIPAddress());
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), address3);
+  EXPECT_TRUE(scheduler.pendingServerAddress().isAllZero());
+  EXPECT_EQ(scheduler.next(), address1);
+  EXPECT_EQ(scheduler.next(), address2);
+
+  EXPECT_EQ(scheduler.next(), address1);
+  EXPECT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  EXPECT_TRUE(scheduler.pendingServerAddress().isAllZero());
+  EXPECT_EQ(scheduler.next(), address2);
+  EXPECT_EQ(scheduler.next(), address3);
+
+  EXPECT_EQ(scheduler.pool().size(), 3);
+  EXPECT_TRUE(scheduler.pool().count(address1));
+  EXPECT_TRUE(scheduler.pool().count(address2));
+  EXPECT_TRUE(scheduler.pool().count(address3));
+  EXPECT_TRUE(scheduler.pendingAddresses().empty());
+}
+
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddressWhileIterating) {
   QuicIPAddress serverAddress(folly::SocketAddress("10.10.10.10", 1010));
   QuicIPAddress address1(folly::SocketAddress("1.1.1.1", 1111));
@@ -244,11 +374,14 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddressWhileIterat
   EXPECT_EQ(scheduler.next(), address1);
   // Set server address.
   scheduler.setCurrentServerAddress(serverAddress);
-  EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress);
+  EXPECT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress);
   // Continue cycling.
   EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
   EXPECT_EQ(scheduler.next(), serverAddress);
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress);
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress);
   EXPECT_EQ(scheduler.next(), address1);
   EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
@@ -271,6 +404,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestChangeServerAddressWhileIte
   scheduler.insert(address1);
   scheduler.setCurrentServerAddress(serverAddress1);
   ASSERT_EQ(scheduler.getCurrentServerAddress(), serverAddress1);
+  ASSERT_EQ(scheduler.pendingServerAddress(), serverAddress1);
   ASSERT_EQ(scheduler.pool().size(), 3);
   ASSERT_TRUE(scheduler.pool().count(address1));
   ASSERT_TRUE(scheduler.pool().count(address2));
@@ -281,11 +415,14 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestChangeServerAddressWhileIte
   EXPECT_EQ(scheduler.next(), address1);
   // Change server address.
   scheduler.setCurrentServerAddress(serverAddress2);
-  ASSERT_EQ(scheduler.getCurrentServerAddress(), serverAddress2);
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress1);
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress2);
   // Continue cycling.
   EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
   EXPECT_EQ(scheduler.next(), serverAddress2);
+  EXPECT_EQ(scheduler.getCurrentServerAddress(), serverAddress2);
+  EXPECT_EQ(scheduler.pendingServerAddress(), serverAddress2);
   EXPECT_EQ(scheduler.next(), address1);
   EXPECT_EQ(scheduler.next(), address2);
   EXPECT_EQ(scheduler.next(), address3);
