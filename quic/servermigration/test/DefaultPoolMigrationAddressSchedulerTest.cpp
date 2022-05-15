@@ -104,6 +104,11 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestInsertWhileNotIterating) {
 }
 
 TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestNextWithEmptyPool) {
+  ASSERT_TRUE(scheduler.getCurrentServerAddress().isAllZero());
+  EXPECT_THROW(scheduler.next(), QuicInternalException);
+  scheduler.setCurrentServerAddress(
+      QuicIPAddress(folly::SocketAddress("1.2.3.4", 1234)));
+  ASSERT_FALSE(scheduler.getCurrentServerAddress().isAllZero());
   EXPECT_THROW(scheduler.next(), QuicInternalException);
 }
 

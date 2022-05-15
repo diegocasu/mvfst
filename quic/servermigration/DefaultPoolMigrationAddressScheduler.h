@@ -17,10 +17,6 @@ namespace quic {
  * the same of insert() and count() offered by std::set, respectively;
  * 2) the complexity of contains(const folly::SocketAddress& address) is the
  * same of count() offered by std::unordered_set.
- * The insertion of an address while cycling the pool does not alter the
- * current cycle, i.e. the insertion has effect only starting from the next
- * cycle. This rule affects also the insertion or modification of the
- * current server address.
  */
 class DefaultPoolMigrationAddressScheduler
     : public PoolMigrationAddressScheduler {
@@ -37,8 +33,21 @@ class DefaultPoolMigrationAddressScheduler
   DefaultPoolMigrationAddressScheduler& operator=(
       DefaultPoolMigrationAddressScheduler&& that) = delete;
 
+  /**
+   * Inserts a new address in the scheduler, if not already present.
+   * The insertion of an address while cycling the pool does not alter the
+   * current cycle, i.e. the insertion has effect only starting from
+   * the next cycle.
+   * @param address  the address. It is ignored if all-zero.
+   */
   void insert(QuicIPAddress address) override;
 
+  /**
+   * Returns the next address in the cycle, advancing it.
+   * It throws a QuicInternalException exception if, taking into consideration
+   * only the addresses added with insert(), the scheduler is empty.
+   * @return  the next address in the cycle.
+   */
   const QuicIPAddress& next() override;
 
   bool contains(const QuicIPAddress& address) override;
@@ -47,6 +56,12 @@ class DefaultPoolMigrationAddressScheduler
 
   void restart() override;
 
+  /**
+   * Sets the current address of the server. If a cycle is on-going,
+   * the operation is effective only starting from the next cycle.
+   * @param address  the current address of the server.
+   *                 If all-zero, it resets the address.
+   */
   void setCurrentServerAddress(QuicIPAddress address) override;
 
   const QuicIPAddress& getCurrentServerAddress() override;
