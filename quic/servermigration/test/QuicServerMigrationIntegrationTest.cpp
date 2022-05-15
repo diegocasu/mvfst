@@ -1049,7 +1049,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
-  Mock::VerifyAndClearExpectations(&clientStateUpdateCallback);
+  Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
   folly::Baton serverMigrationReadyBaton;
@@ -1084,8 +1084,10 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       ServerMigrationProtocol::EXPLICIT, quicIpServerMigrationAddress);
   EXPECT_TRUE(serverMigrationReadyBaton.try_wait_for(batonTimeout));
   serverMigrationReadyBaton.reset();
-  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
-  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackClientSide.get());
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackServerSide.get());
 
   // Start the migration.
   folly::Baton serverMigrationCompletedBaton;
@@ -1116,8 +1118,10 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   serverMigrationCompletedBaton.reset();
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
-  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackClientSide);
-  Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackClientSide.get());
+  Mock::VerifyAndClearExpectations(
+      serverMigrationEventCallbackServerSide.get());
 
   EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
       .Times(Exactly(1))
