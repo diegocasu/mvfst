@@ -762,6 +762,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSym
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
 
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   // Test with server migration disabled.
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
@@ -808,6 +812,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
 
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   // Test with server migration disabled.
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
@@ -843,6 +851,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSymmetricServerMigratedAck) {
   ServerMigratedFrame serverMigratedFrame;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
   // Test with server migration disabled.
   EXPECT_THROW(
@@ -885,6 +897,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSym
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigratedAck) {
   ServerMigratedFrame serverMigratedFrame;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
   // Test with server migration disabled.
   EXPECT_THROW(

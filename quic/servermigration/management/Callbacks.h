@@ -126,6 +126,25 @@ class ServerMigrationEventCallback {
       ServerMigrationFrame /*frame*/) noexcept {};
 
   /**
+   * Called when a SERVER_MIGRATED frame is received.
+   * It is not called if the frame is a duplicate, or
+   * causes a protocol violation.
+   * It should be implemented only on the client side.
+   */
+  virtual void onServerMigratedReceived() noexcept {};
+
+  /**
+   * Called when an acknowledgement for a previously sent
+   * SERVER_MIGRATED frame is received.
+   * It is not called if the acknowledgement is a duplicate.
+   * It should be implemented only on the server side.
+   * @param serverConnectionId  the connection ID of the QuicServerTransport
+   *                            instance managing the connection.
+   */
+  virtual void onServerMigratedAckReceived(
+      ConnectionId /*serverConnectionId*/) noexcept {};
+
+  /**
    * Called when a client starts probing a new server address sending a PING
    * frame. For the Explicit protocol, it is invoked only once at the beginning
    * of the probing phase; for the Pool of Addresses protocol, it is invoked
