@@ -75,8 +75,12 @@ struct ExplicitClientState {
 };
 
 struct SymmetricClientState {
-  bool operator==(const SymmetricClientState& /*rhs*/) const {
-    return true;
+  bool callbackNotified{false};
+  bool pathValidationStarted{false};
+
+  bool operator==(const SymmetricClientState& rhs) const {
+    return callbackNotified == rhs.callbackNotified &&
+        pathValidationStarted == rhs.pathValidationStarted;
   }
 
   bool operator!=(const SymmetricClientState& rhs) const {
@@ -85,8 +89,12 @@ struct SymmetricClientState {
 };
 
 struct SynchronizedSymmetricClientState {
-  bool operator==(const SynchronizedSymmetricClientState& /*rhs*/) const {
-    return true;
+  bool callbackNotified{false};
+  bool pathValidationStarted{false};
+
+  bool operator==(const SynchronizedSymmetricClientState& rhs) const {
+    return callbackNotified == rhs.callbackNotified &&
+        pathValidationStarted == rhs.pathValidationStarted;
   }
 
   bool operator!=(const SynchronizedSymmetricClientState& rhs) const {

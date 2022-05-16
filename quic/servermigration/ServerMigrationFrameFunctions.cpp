@@ -541,6 +541,42 @@ void handleSynchronizedSymmetricServerMigrationFrameAck(
   }
 }
 
+void handleServerMigratedFrame(
+    quic::QuicClientConnectionState& connectionState) {
+  // Only handle the callbacks for both the Symmetric and Synchronized
+  // Symmetric protocols. The update of the state is handled directly in
+  // maybeDetectSymmetricMigration().
+  if (!connectionState.serverMigrationState.protocolState) {
+    connectionState.serverMigrationState.protocolState =
+        quic::SymmetricClientState();
+  }
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolClientState::Type::
+          SymmetricClientState) {
+    auto protocolState = connectionState.serverMigrationState.protocolState
+                             ->asSymmetricClientState();
+    if (connectionState.serverMigrationState.serverMigrationEventCallback &&
+        !protocolState->callbackNotified) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigratedReceived();
+      protocolState->callbackNotified = true;
+    }
+    return;
+  }
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolClientState::Type::
+          SynchronizedSymmetricClientState) {
+    auto protocolState = connectionState.serverMigrationState.protocolState
+                             ->asSynchronizedSymmetricClientState();
+    if (connectionState.serverMigrationState.serverMigrationEventCallback &&
+        !protocolState->callbackNotified) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigratedReceived();
+      protocolState->callbackNotified = true;
+    }
+  }
+}
+
 void maybeUpdateExplicitServerMigrationProbing(
     quic::QuicClientConnectionState& connectionState) {
   auto protocolState = connectionState.serverMigrationState.protocolState
@@ -762,7 +798,7 @@ void updateServerMigrationFrameOnPacketReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState, peerAddress);
-      // TODO add implementation for SERVER_MIGRATED
+      handleServerMigratedFrame(connectionState);
       return;
   }
   folly::assume_unreachable();

@@ -807,6 +807,50 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSym
       QuicTransportException);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSymmetricServerMigrated) {
+  ServerMigratedFrame serverMigratedFrame;
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  // Test when no protocol state is present.
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, 0, serverNewAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
+  ASSERT_TRUE(
+      clientState.serverMigrationState.protocolState->asSymmetricClientState());
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asSymmetricClientState();
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+
+  // Test when state is already present and callback already notified.
+  ASSERT_TRUE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, 1, serverNewAddress);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+  Mock::VerifyAndClearExpectations(callback.get());
+
+  // Test when state is present, but the callback has not been notified yet.
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
+  protocolState->callbackNotified = false;
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, 2, serverNewAddress);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSynchronizedSymmetricServerMigrated) {
   ServerMigratedFrame serverMigratedFrame;
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
@@ -847,6 +891,42 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
       updateServerMigrationFrameOnPacketReceived(
           clientState, serverMigratedFrame, 3, clientState.peerAddress),
       QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynchronizedSymmetricServerMigrated) {
+  ServerMigratedFrame serverMigratedFrame;
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  // Test when state is present, but the callback has not been notified yet.
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  ASSERT_FALSE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, 0, serverNewAddress);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+
+  // Test when state is already present and callback already notified.
+  ASSERT_TRUE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, 1, serverNewAddress);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSymmetricServerMigratedAck) {
