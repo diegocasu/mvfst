@@ -62,7 +62,7 @@ class DefaultPoolMigrationAddressScheduler
   void restart() override;
 
   /**
-   * Sets the current address of the server. If a cycle is on-going,
+   * Sets the current address of the server. If a cycle is ongoing,
    * the operation is effective only starting from the next cycle.
    * @param address  the current address of the server.
    *                 If all-zero, it resets the address.

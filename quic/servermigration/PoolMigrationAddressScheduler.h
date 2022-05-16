@@ -15,7 +15,7 @@ class PoolMigrationAddressScheduler {
 
   /**
    * Inserts a new address in the scheduler, if not already present.
-   * It can be called even if a cycle is on-going, but the guarantees of this
+   * It can be called even if a cycle is ongoing, but the guarantees of this
    * operation depend on the particular implementation (the address could be
    * available in the current cycle, or starting from the next one, etc.).
    * @param address  the address. It is ignored if all-zero.
