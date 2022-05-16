@@ -629,7 +629,8 @@ void QuicClientTransport::processPacketData(
           updateServerMigrationFrameOnPacketReceived(
               *clientConn_,
               *simpleFrame.asQuicServerMigrationFrame(),
-              packetNum);
+              packetNum,
+              peer);
           break;
         }
         isNonProbingPacket |= updateSimpleFrameOnPacketReceived(

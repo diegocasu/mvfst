@@ -223,15 +223,17 @@ void throwIfUnexpectedServerMigratedFrame(
 }
 
 void throwIfUnexpectedServerMigratedFrame(
-    const quic::QuicClientConnectionState& connectionState) {
+    const quic::QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
   auto& negotiatedProtocols =
       connectionState.serverMigrationState.negotiator->getNegotiatedProtocols()
           .value();
-
-  if (!connectionState.serverMigrationState.protocolState ||
-      connectionState.serverMigrationState.protocolState->type() ==
-          quic::QuicServerMigrationProtocolClientState::Type::
-              SymmetricClientState) {
+  if (peerAddress == connectionState.peerAddress) {
+    throw quic::QuicTransportException(
+        "Received a SERVER_MIGRATED frame from the current peer address",
+        quic::TransportErrorCode::PROTOCOL_VIOLATION);
+  }
+  if (!connectionState.serverMigrationState.protocolState) {
     // Symmetric protocol.
     if (!negotiatedProtocols.count(quic::ServerMigrationProtocol::SYMMETRIC)) {
       throw quic::QuicTransportException(
@@ -240,18 +242,14 @@ void throwIfUnexpectedServerMigratedFrame(
     }
     return;
   }
-
   if (connectionState.serverMigrationState.protocolState->type() ==
-      quic::QuicServerMigrationProtocolClientState::Type::
-          SynchronizedSymmetricClientState) {
-    if (!negotiatedProtocols.count(
-            quic::ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC)) {
-      throw quic::QuicTransportException(
-          "Synchronized Symmetric protocol not negotiated",
-          quic::TransportErrorCode::PROTOCOL_VIOLATION);
-    }
+          quic::QuicServerMigrationProtocolClientState::Type::
+              SymmetricClientState ||
+      connectionState.serverMigrationState.protocolState->type() ==
+          quic::QuicServerMigrationProtocolClientState::Type::
+              SynchronizedSymmetricClientState) {
+    return;
   }
-
   throw quic::QuicTransportException(
       "Symmetric or Synchronized Symmetric protocol took the place of another protocol",
       quic::TransportErrorCode::PROTOCOL_VIOLATION);
@@ -741,7 +739,8 @@ void updateServerMigrationFrameOnPacketReceived(
 void updateServerMigrationFrameOnPacketReceived(
     QuicClientConnectionState& connectionState,
     const QuicServerMigrationFrame& frame,
-    const PacketNum& packetNumber) {
+    const PacketNum& packetNumber,
+    const folly::SocketAddress& peerAddress) {
   throwIfMigrationIsNotEnabled(
       connectionState,
       "Server migration is disabled",
@@ -772,7 +771,7 @@ void updateServerMigrationFrameOnPacketReceived(
           connectionState, *frame.asPoolMigrationAddressFrame());
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
-      throwIfUnexpectedServerMigratedFrame(connectionState);
+      throwIfUnexpectedServerMigratedFrame(connectionState, peerAddress);
       // TODO add implementation for SERVER_MIGRATED
       return;
   }

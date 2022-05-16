@@ -32,11 +32,13 @@ void updateServerMigrationFrameOnPacketReceived(
  * @param connectionState  the client connection state.
  * @param frame            the received server migration frame.
  * @param packetNumber     the packet number of the packet carrying the frame.
+ * @param peerAddress      the address of the peer.
  */
 void updateServerMigrationFrameOnPacketReceived(
     QuicClientConnectionState& connectionState,
     const QuicServerMigrationFrame& frame,
-    const PacketNum& packetNumber);
+    const PacketNum& packetNumber,
+    const folly::SocketAddress& peerAddress);
 
 /**
  * Updates the connection state of the server when an acknowledgement
