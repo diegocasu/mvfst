@@ -577,6 +577,37 @@ void handleServerMigratedFrame(
   }
 }
 
+void handleServerMigratedFrameAck(
+    quic::QuicServerConnectionState& connectionState) {
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolServerState::Type::
+          SymmetricServerState) {
+    auto protocolState = connectionState.serverMigrationState.protocolState
+                             ->asSymmetricServerState();
+    if (connectionState.serverMigrationState.serverMigrationEventCallback &&
+        !protocolState->callbackNotified) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigratedAckReceived(connectionState.serverMigrationState
+                                            .originalConnectionId.value());
+      protocolState->callbackNotified = true;
+    }
+    return;
+  }
+  if (connectionState.serverMigrationState.protocolState->type() ==
+      quic::QuicServerMigrationProtocolServerState::Type::
+          SynchronizedSymmetricServerState) {
+    auto protocolState = connectionState.serverMigrationState.protocolState
+                             ->asSynchronizedSymmetricServerState();
+    if (connectionState.serverMigrationState.serverMigrationEventCallback &&
+        !protocolState->callbackNotified) {
+      connectionState.serverMigrationState.serverMigrationEventCallback
+          ->onServerMigratedAckReceived(connectionState.serverMigrationState
+                                            .originalConnectionId.value());
+      protocolState->callbackNotified = true;
+    }
+  }
+}
+
 void maybeUpdateExplicitServerMigrationProbing(
     quic::QuicClientConnectionState& connectionState) {
   auto protocolState = connectionState.serverMigrationState.protocolState
@@ -844,7 +875,7 @@ void updateServerMigrationFrameOnPacketAckReceived(
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
       throwIfUnexpectedServerMigratedFrame(connectionState);
-      // TODO add implementation for SERVER_MIGRATED
+      handleServerMigratedFrameAck(connectionState);
       return;
   }
   folly::assume_unreachable();

@@ -101,8 +101,10 @@ struct ExplicitServerState {
 };
 
 struct SymmetricServerState {
-  bool operator==(const SymmetricServerState& /*rhs*/) const {
-    return true;
+  bool callbackNotified{false};
+
+  bool operator==(const SymmetricServerState& rhs) const {
+    return callbackNotified == rhs.callbackNotified;
   }
 
   bool operator!=(const SymmetricServerState& rhs) const {
@@ -112,9 +114,11 @@ struct SymmetricServerState {
 
 struct SynchronizedSymmetricServerState {
   bool migrationAcknowledged{false};
+  bool callbackNotified{false};
 
   bool operator==(const SynchronizedSymmetricServerState& rhs) const {
-    return migrationAcknowledged == rhs.migrationAcknowledged;
+    return migrationAcknowledged == rhs.migrationAcknowledged &&
+        callbackNotified == rhs.callbackNotified;
   }
 
   bool operator!=(const SynchronizedSymmetricServerState& rhs) const {

@@ -975,6 +975,35 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSym
       QuicTransportException);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(Exactly(1));
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asSymmetricServerState();
+
+  // Test when callback not already notified.
+  ASSERT_FALSE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, 0);
+  EXPECT_TRUE(protocolState->callbackNotified);
+
+  // Test when callback already notified.
+  ASSERT_TRUE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, 1);
+  EXPECT_TRUE(protocolState->callbackNotified);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigratedAck) {
   ServerMigratedFrame serverMigratedFrame;
 
@@ -1034,6 +1063,39 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSyn
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, 4),
       QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynchronizedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(Exactly(1));
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = true;
+
+  // Test when callback not already notified.
+  ASSERT_FALSE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, 0);
+  EXPECT_TRUE(protocolState->callbackNotified);
+
+  // Test when callback already notified.
+  ASSERT_TRUE(protocolState->callbackNotified);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, 1);
+  EXPECT_TRUE(protocolState->callbackNotified);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbing) {
