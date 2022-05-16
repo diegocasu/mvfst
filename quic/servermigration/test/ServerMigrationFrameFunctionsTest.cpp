@@ -834,6 +834,105 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
       QuicTransportException);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 0),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 1),
+      QuicTransportException);
+
+  // Test reception without a protocol state.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState.clear();
+  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 2),
+      QuicTransportException);
+
+  // Test with protocol state not matching the frame type.
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 3),
+      QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 0),
+      QuicTransportException);
+
+  // Test with frame type belonging to a not negotiated protocol.
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  serverState.serverMigrationState.protocolState
+      ->asSynchronizedSymmetricServerState()
+      ->migrationAcknowledged = true;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 1),
+      QuicTransportException);
+
+  // Test with SERVER_MIGRATION not acknowledged.
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState
+      ->asSynchronizedSymmetricServerState()
+      ->migrationAcknowledged = false;
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 2),
+      QuicTransportException);
+
+  // Test reception without a protocol state.
+  serverState.serverMigrationState.protocolState.clear();
+  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 3),
+      QuicTransportException);
+
+  // Test with protocol state not matching the frame type.
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, 4),
+      QuicTransportException);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
