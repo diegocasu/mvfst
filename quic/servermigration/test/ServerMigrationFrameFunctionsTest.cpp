@@ -1734,21 +1734,29 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationServerSide) 
   EXPECT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 1);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearPoolOfAddressesState) {
-  clientState.serverMigrationState.protocolState =
-      PoolOfAddressesClientState(poolMigrationAddressScheduler);
-  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
-  endServerMigration(clientState, 1);
-  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
-  EXPECT_TRUE(clientState.serverMigrationState.protocolState
-                  ->asPoolOfAddressesClientState());
-
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearServerPoolOfAddressesState) {
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
   serverState.serverMigrationState.largestProcessedPacketNumber = 0;
   endServerMigration(serverState, 1);
   EXPECT_TRUE(serverState.serverMigrationState.protocolState);
   EXPECT_TRUE(serverState.serverMigrationState.protocolState
                   ->asPoolOfAddressesServerState());
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearClientPoolOfAddressesState) {
+  PoolOfAddressesClientState protocolState(poolMigrationAddressScheduler);
+  protocolState.probingInProgress = false;
+  protocolState.probingFinished = true;
+  clientState.serverMigrationState.protocolState = std::move(protocolState);
+  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
+  endServerMigration(clientState, 1);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesClientState());
+  auto newProtocolState = clientState.serverMigrationState.protocolState
+                              ->asPoolOfAddressesClientState();
+  EXPECT_FALSE(newProtocolState->probingInProgress);
+  EXPECT_FALSE(newProtocolState->probingFinished);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestRetransmissionOnPacketLoss) {

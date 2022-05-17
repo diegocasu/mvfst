@@ -1075,8 +1075,12 @@ void endServerMigration(
   // Clear the protocol state, so that future migrations are possible. The only
   // exception is when Pool of Addresses is used, since the pool must be
   // preserved across migrations.
-  if (!connectionState.serverMigrationState.protocolState
-           ->asPoolOfAddressesClientState()) {
+  auto poolOfAddressesProtocolState =
+      connectionState.serverMigrationState.protocolState
+          ->asPoolOfAddressesClientState();
+  if (poolOfAddressesProtocolState) {
+    poolOfAddressesProtocolState->probingFinished = false;
+  } else {
     connectionState.serverMigrationState.protocolState.clear();
   }
 
