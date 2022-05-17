@@ -763,6 +763,41 @@ void maybeEndPoolOfAddressesServerMigrationProbing(
   }
 }
 
+void handleSymmetricMigration(
+    quic::QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
+  if (!connectionState.serverMigrationState.protocolState) {
+    // A SERVER_MIGRATED frame was not carried in the packet causing
+    // the migration, so create the state here.
+    connectionState.serverMigrationState.protocolState =
+        quic::SymmetricClientState();
+  }
+
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asSymmetricClientState();
+  if (protocolState->pathValidationStarted) {
+    return;
+  }
+
+  // Change the peer address.
+  connectionState.peerAddress = peerAddress;
+  connectionState.serverMigrationState.migrationInProgress = true;
+
+  // Start path validation. The retransmission of PATH_CHALLENGE frames
+  // is done automatically when a packet is marked as lost.
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  connectionState.pendingEvents.pathChallenge =
+      quic::PathChallengeFrame(pathData);
+  protocolState->pathValidationStarted = true;
+
+  // Set the anti-amplification limit for the non-validated path.
+  // This limit is automatically ignored after a path validation succeeds.
+  connectionState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          connectionState.udpSendPacketLen);
+}
+
 } // namespace
 
 namespace quic {
@@ -941,6 +976,51 @@ void maybeEndServerMigrationProbing(
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
     case QuicServerMigrationProtocolClientState::Type::
         SynchronizedSymmetricClientState:
+      return;
+  }
+  folly::assume_unreachable();
+}
+
+void maybeDetectSymmetricMigration(
+    QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress,
+    const PacketNum& packetNumber) {
+  if (peerAddress == connectionState.peerAddress) {
+    return;
+  }
+  throwIfMigrationIsNotEnabled(
+      connectionState,
+      "Server migration is disabled",
+      TransportErrorCode::PROTOCOL_VIOLATION);
+
+  if (!connectionState.serverMigrationState.protocolState) {
+    // If the execution flow arrives here, it means that this is an attempt for
+    // a Symmetric migration, but a SERVER_MIGRATED frame was not carried in the
+    // first packet received from the new server address. Then, perform here the
+    // same checks done when a SERVER_MIGRATED frame is received.
+    throwIfUnexpectedServerMigratedFrame(connectionState, peerAddress);
+    // Here and in the following switch cases, the largest processed packet
+    // number must be updated, as happens with the reception of SERVER_MIGRATED.
+    // This ensures that the reception of an out-of-order SERVER_MIGRATED does
+    // not cause a protocol violation when invoking
+    // updateServerMigrationFrameOnPacketReceived().
+    updateLargestProcessedPacketNumber(connectionState, packetNumber);
+    handleSymmetricMigration(connectionState, peerAddress);
+    return;
+  }
+
+  switch (connectionState.serverMigrationState.protocolState->type()) {
+    case QuicServerMigrationProtocolClientState::Type::ExplicitClientState:
+    case QuicServerMigrationProtocolClientState::Type::
+        PoolOfAddressesClientState:
+      return;
+    case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
+      updateLargestProcessedPacketNumber(connectionState, packetNumber);
+      handleSymmetricMigration(connectionState, peerAddress);
+      return;
+    case QuicServerMigrationProtocolClientState::Type::
+        SynchronizedSymmetricClientState:
+      // TODO
       return;
   }
   folly::assume_unreachable();

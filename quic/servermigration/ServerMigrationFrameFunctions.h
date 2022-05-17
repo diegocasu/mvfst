@@ -105,6 +105,22 @@ void maybeEndServerMigrationProbing(
     const folly::SocketAddress& peerAddress);
 
 /**
+ * Detects if a Symmetric or Synchronized Symmetric migration is ongoing.
+ * It must be called only when the highest-numbered non-probing packet
+ * arrives from a new server address.
+ * @param connectionState  the client connection state.
+ * @param peerAddress      the address from which the highest-numbered
+ *                         non-probing packet has been received. It must be
+ *                         different from the current server address.
+ * @param packetNumber     the packet number of the highest-numbered
+ *                         non-probing packet.
+ */
+void maybeDetectSymmetricMigration(
+    QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress,
+    const PacketNum& packetNumber);
+
+/**
  * Ends a server migration, resetting the migration state. It must be called
  * only if a server migration protocol state has already been created and a path
  * validation involving a new server address has been successfully completed.

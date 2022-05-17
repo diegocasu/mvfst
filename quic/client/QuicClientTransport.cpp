@@ -679,8 +679,7 @@ void QuicClientTransport::processPacketData(
     // Same reasoning of the previous case, but this time related to the
     // Symmetric and Synchronized Symmetric protocols. Here, the first packet
     // from the new server address could not contain a SERVER_MIGRATED frame.
-
-    // TODO implement migration for Symmetric and Synchronized Symmetric
+    maybeDetectSymmetricMigration(*clientConn_, peer, packetNum);
   }
   if (clientConn_->serverMigrationState.protocolState &&
       clientConn_->serverMigrationState.migrationInProgress &&
