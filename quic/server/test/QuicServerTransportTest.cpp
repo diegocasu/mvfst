@@ -2422,6 +2422,7 @@ TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolOnNetworkSwitch
   ASSERT_NE(server->getSocket().address(), newAddress);
   ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
   ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+  ASSERT_EQ(shouldWriteData(server->getConn()), WriteDataReason::NO_WRITE);
   server->onNetworkSwitch(std::move(newSocket));
   EXPECT_EQ(server->getSocket().address(), newAddress);
   EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
@@ -2432,6 +2433,40 @@ TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolOnNetworkSwitch
            .asQuicServerMigrationFrame()
            ->asServerMigratedFrame(),
       ServerMigratedFrame());
+}
+
+TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolWithoutServerMigratedOnNetworkSwitch) {
+  folly::SocketAddress newAddress("127.11.11.11", 1234);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationFailed).Times(0);
+  server->setServerMigrationEventCallback(callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+
+  // Simulate the availability of some data to write.
+  NewTokenFrame newTokenFrame("test");
+  server->getNonConstConn().pendingEvents.frames.emplace_back(
+      std::move(newTokenFrame));
+
+  ASSERT_NE(server->getSocket().address(), newAddress);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(server->getConn().pendingEvents.frames.empty());
+  ASSERT_EQ(server->getConn().pendingEvents.frames.size(), 1);
+  ASSERT_EQ(
+      *server->getConn().pendingEvents.frames.at(0).asNewTokenFrame(),
+      newTokenFrame);
+  ASSERT_NE(shouldWriteData(server->getConn()), WriteDataReason::NO_WRITE);
+  server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_EQ(server->getSocket().address(), newAddress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_EQ(server->getConn().pendingEvents.frames.size(), 1);
+  EXPECT_EQ(
+      *server->getConn().pendingEvents.frames.at(0).asNewTokenFrame(),
+      newTokenFrame);
 }
 
 class QuicServerTransportAllowMigrationTest

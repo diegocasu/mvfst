@@ -480,7 +480,10 @@ void QuicServerTransport::onNetworkSwitch(
     case QuicServerMigrationProtocolServerState::Type::SymmetricServerState:
     case QuicServerMigrationProtocolServerState::Type::
         SynchronizedSymmetricServerState:
-      sendServerMigrationFrame(*serverConn_, ServerMigratedFrame());
+      if (shouldWriteData(*conn_) == WriteDataReason::NO_WRITE) {
+        sendServerMigrationFrame(*serverConn_, ServerMigratedFrame());
+      }
+      updateWriteLooper(true);
       return;
   }
   folly::assume_unreachable();
