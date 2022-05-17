@@ -1296,6 +1296,59 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMig
   EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceivePoolMigrationAddressDuringServerMigrationProbing) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame1(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PoolMigrationAddressFrame poolMigrationAddressFrame2(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
+      .Times(Exactly(2))
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == poolMigrationAddressFrame1);
+      })
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == poolMigrationAddressFrame2);
+      });
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  // Simulate reception of first pool migration address.
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, poolMigrationAddressFrame1, 0, clientState.peerAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  ASSERT_TRUE(protocolState->addressScheduler->contains(
+      poolMigrationAddressFrame1.address));
+  ASSERT_FALSE(protocolState->probingInProgress);
+  ASSERT_FALSE(protocolState->probingFinished);
+
+  // Simulate beginning of the migration probing.
+  maybeUpdateServerMigrationProbing(clientState);
+  ASSERT_TRUE(protocolState->probingInProgress);
+  ASSERT_FALSE(protocolState->probingFinished);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+
+  // Reception of the second pool migration address.
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, poolMigrationAddressFrame2, 1, clientState.peerAddress));
+  EXPECT_TRUE(protocolState->addressScheduler->contains(
+      poolMigrationAddressFrame2.address));
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenNoProbingInProgress) {
   QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
   QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
