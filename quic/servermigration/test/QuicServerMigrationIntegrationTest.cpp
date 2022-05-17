@@ -308,6 +308,7 @@ class QuicServerMigrationIntegrationTestServer {
     void readError(quic::StreamId id, QuicError error) noexcept override {
       LOG(ERROR) << "Read error on stream=" << id
                  << " error=" << toString(error);
+      sock->resetStream(id, static_cast<uint16_t>(LocalErrorCode::APP_ERROR));
     }
 
     void onStreamWriteReady(quic::StreamId id, uint64_t maxToSend) noexcept
