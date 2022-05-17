@@ -962,8 +962,19 @@ folly::Optional<QuicSimpleFrame> updateServerMigrationFrameOnPacketClone(
 void updateServerMigrationFrameOnPacketLoss(
     QuicConnectionStateBase& connectionState,
     const QuicServerMigrationFrame& frame) {
-  // Retransmit frame.
-  connectionState.pendingEvents.frames.push_back(frame);
+  switch (frame.type()) {
+    case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      // Do not retransmit a SERVER_MIGRATED to avoid a protocol violation
+      // caused by the frame arriving when the client already detected a
+      // migration and updated the peer address.
+      // Note that the client detects the server migration when the first
+      // non-probing packet from the new address arrives, so there is no need
+      // to enforce a retransmission.
+      break;
+    default:
+      // Retransmit the frame.
+      connectionState.pendingEvents.frames.push_back(frame);
+  }
 }
 
 void maybeUpdateServerMigrationProbing(

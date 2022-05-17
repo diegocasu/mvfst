@@ -1751,5 +1751,25 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClear
                   ->asPoolOfAddressesServerState());
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestRetransmissionOnPacketLoss) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+  updateServerMigrationFrameOnPacketLoss(serverState, serverMigrationFrame);
+  EXPECT_FALSE(serverState.pendingEvents.frames.empty());
+  EXPECT_EQ(
+      *serverState.pendingEvents.frames.at(0)
+           .asQuicServerMigrationFrame()
+           ->asServerMigrationFrame(),
+      serverMigrationFrame);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerMigratedNotRetransmittedOnPacketLoss) {
+  ServerMigratedFrame serverMigratedFrame;
+  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
+  updateServerMigrationFrameOnPacketLoss(serverState, serverMigratedFrame);
+  EXPECT_TRUE(serverState.pendingEvents.frames.empty());
+}
+
 } // namespace test
 } // namespace quic
