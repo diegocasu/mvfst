@@ -1113,6 +1113,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       });
 
   server.server->onNetworkSwitch(serverMigrationAddress);
+  EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
   client.send("migration");
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
@@ -1275,6 +1276,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
       poolMigrationAddresses.count(QuicIPAddress(serverMigrationAddress)));
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
   server.server->onNetworkSwitch(serverMigrationAddress);
+  EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
   client.send("migration");
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
@@ -1388,6 +1390,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       });
 
   server.server->onNetworkSwitch(serverMigrationAddress);
+  EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
   Mock::VerifyAndClearExpectations(
@@ -1524,6 +1527,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       });
 
   server.server->onNetworkSwitch(serverMigrationAddress);
+  EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
   Mock::VerifyAndClearExpectations(
