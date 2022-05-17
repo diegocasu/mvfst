@@ -798,6 +798,33 @@ void handleSymmetricMigration(
           connectionState.udpSendPacketLen);
 }
 
+void handleSynchronizedSymmetricMigration(
+    quic::QuicClientConnectionState& connectionState,
+    const folly::SocketAddress& peerAddress) {
+  auto protocolState = connectionState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  if (protocolState->pathValidationStarted) {
+    return;
+  }
+
+  // Change the peer address.
+  connectionState.peerAddress = peerAddress;
+
+  // Start path validation. The retransmission of PATH_CHALLENGE frames
+  // is done automatically when a packet is marked as lost.
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  connectionState.pendingEvents.pathChallenge =
+      quic::PathChallengeFrame(pathData);
+  protocolState->pathValidationStarted = true;
+
+  // Set the anti-amplification limit for the non-validated path.
+  // This limit is automatically ignored after a path validation succeeds.
+  connectionState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          connectionState.udpSendPacketLen);
+}
+
 } // namespace
 
 namespace quic {
@@ -1020,7 +1047,8 @@ void maybeDetectSymmetricMigration(
       return;
     case QuicServerMigrationProtocolClientState::Type::
         SynchronizedSymmetricClientState:
-      // TODO
+      updateLargestProcessedPacketNumber(connectionState, packetNumber);
+      handleSynchronizedSymmetricMigration(connectionState, peerAddress);
       return;
   }
   folly::assume_unreachable();

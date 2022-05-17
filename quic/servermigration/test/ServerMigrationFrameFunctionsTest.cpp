@@ -1579,6 +1579,114 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
       clientState.serverMigrationState.protocolState->asSymmetricClientState());
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedDetectSynchronizedSymmetricMigration) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  // Test with server migration disabled.
+  EXPECT_THROW(
+      maybeDetectSymmetricMigration(clientState, serverNewAddress, 0),
+      QuicTransportException);
+
+  // Test with migration enabled, but with the new server
+  // address equal to the current server address.
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+  EXPECT_NO_THROW(
+      maybeDetectSymmetricMigration(clientState, clientState.peerAddress, 1));
+  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedDetectSynchronizedSymmetricMigration) {
+  folly::SocketAddress originalClientPeer = clientState.peerAddress;
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+
+  // Test correct detection.
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState
+                   ->asSynchronizedSymmetricClientState()
+                   ->pathValidationStarted);
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
+  EXPECT_EQ(clientState.peerAddress, serverNewAddress);
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
+  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asSynchronizedSymmetricClientState()
+                  ->pathValidationStarted);
+
+  // Test with path validation already in progress.
+  clientState.peerAddress = originalClientPeer;
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  clientState.serverMigrationState.protocolState
+      ->asSynchronizedSymmetricClientState()
+      ->pathValidationStarted = true;
+  clientState.serverMigrationState.largestProcessedPacketNumber.clear();
+  clientState.pendingEvents.pathChallenge.clear();
+  clientState.pathValidationLimiter = nullptr;
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
+  EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigratedAfterSynchronizedSymmetricMigrationDetected) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, 2);
+  ASSERT_EQ(clientState.peerAddress, serverNewAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asSynchronizedSymmetricClientState());
+
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState, ServerMigratedFrame(), 1, serverNewAddress));
+  EXPECT_EQ(clientState.peerAddress, serverNewAddress);
+  EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asSynchronizedSymmetricClientState());
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
   clientState.serverMigrationState.protocolState =
