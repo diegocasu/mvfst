@@ -483,7 +483,7 @@ void QuicServerTransport::onNetworkSwitch(
       if (shouldWriteData(*conn_) == WriteDataReason::NO_WRITE) {
         sendServerMigrationFrame(*serverConn_, ServerMigratedFrame());
       }
-      updateWriteLooper(true);
+      updateWriteLooper(false);
       return;
   }
   folly::assume_unreachable();
