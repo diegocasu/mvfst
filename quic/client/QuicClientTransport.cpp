@@ -658,10 +658,14 @@ void QuicClientTransport::processPacketData(
     handshakeConfirmed(*conn_);
   }
 
+  auto isHighestNonProbingPacket =
+      (isNonProbingPacket && packetNum == ackState.largestReceivedPacketNum);
   if (clientConn_->serverMigrationState.protocolState &&
       !clientConn_->serverMigrationState.protocolState
            ->asSynchronizedSymmetricClientState() &&
-      isNonProbingPacket) {
+      !clientConn_->serverMigrationState.protocolState
+           ->asSymmetricClientState() &&
+      isHighestNonProbingPacket) {
     // This packet could be the first one sent by the server after a migration,
     // so check if an ongoing probing, performed as part of the Explicit or PoA
     // protocol, should end. Note that the probing is stopped upon the reception
@@ -671,7 +675,7 @@ void QuicClientTransport::processPacketData(
     // new address arrive out of order, or there are losses, or the server
     // maliciously never sends an acknowledgement for a probe.
     maybeEndServerMigrationProbing(*clientConn_, peer);
-  } else if (conn_->peerAddress != peer && isNonProbingPacket) {
+  } else if (conn_->peerAddress != peer && isHighestNonProbingPacket) {
     // Same reasoning of the previous case, but this time related to the
     // Symmetric and Synchronized Symmetric protocols. Here, the first packet
     // from the new server address could not contain a SERVER_MIGRATED frame.
