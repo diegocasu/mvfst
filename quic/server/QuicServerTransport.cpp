@@ -302,6 +302,7 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
   serverConn_->serverMigrationState.migrationInProgress = true;
   sendServerMigrationFrame(
       *serverConn_, ServerMigrationFrame(migrationAddress.value()));
+  updateWriteLooper(true);
 }
 
 void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
@@ -434,6 +435,7 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
       SynchronizedSymmetricServerState();
   serverConn_->serverMigrationState.migrationInProgress = true;
   sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(QuicIPAddress()));
+  updateWriteLooper(true);
 }
 
 void QuicServerTransport::onNetworkSwitch(
