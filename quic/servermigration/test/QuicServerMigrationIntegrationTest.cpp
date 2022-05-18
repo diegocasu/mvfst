@@ -126,11 +126,13 @@ class QuicServerMigrationIntegrationTestClient
                << " error=" << toString(error);
   }
 
-  void setKeyLoggerConfig(const std::string& fileName) noexcept {
+  void setKeyLoggerConfig(
+      const std::string& fileName,
+      QuicKeyLogWriter::WriteMode writeMode) noexcept {
     QuicKeyLogWriter::Config config;
     config.fileName = fileName;
     config.flushPolicy = QuicKeyLogWriter::FlushPolicy::IMMEDIATELY;
-    config.writeMode = QuicKeyLogWriter::WriteMode::OVERWRITE;
+    config.writeMode = writeMode;
     keyLoggerConfig_ = std::move(config);
   }
 
