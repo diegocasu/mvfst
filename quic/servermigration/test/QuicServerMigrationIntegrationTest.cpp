@@ -1068,8 +1068,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback,
-      serverMigrationEventCallbackServerSide,
-      poolMigrationAddresses);
+      serverMigrationEventCallbackServerSide);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -1152,7 +1151,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
 
   server.server->onNetworkSwitch(serverMigrationAddress);
   EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
-  client.send("migration");
+  client.send("probing");
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
@@ -1323,7 +1322,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
   server.server->onNetworkSwitch(serverMigrationAddress);
   EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
-  client.send("migration");
+  client.send("probing");
   EXPECT_TRUE(serverMigrationCompletedBaton.try_wait_for(batonTimeout));
   serverMigrationCompletedBaton.reset();
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
@@ -1371,8 +1370,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback,
-      serverMigrationEventCallbackServerSide,
-      poolMigrationAddresses);
+      serverMigrationEventCallbackServerSide);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -1491,8 +1489,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback,
-      serverMigrationEventCallbackServerSide,
-      poolMigrationAddresses);
+      serverMigrationEventCallbackServerSide);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -1613,8 +1610,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigrati
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback,
-      serverMigrationEventCallbackServerSide,
-      poolMigrationAddresses);
+      serverMigrationEventCallbackServerSide);
   server.start();
   server.server->waitUntilInitialized();
 
@@ -1719,8 +1715,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback,
-      serverMigrationEventCallbackServerSide,
-      poolMigrationAddresses);
+      serverMigrationEventCallbackServerSide);
   server.start();
   server.server->waitUntilInitialized();
 
