@@ -1207,6 +1207,13 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
+
+  // Send a second message to be sure that the acknowledgements for the pool
+  // migration addresses, if present, are received by the server.
+  client.send("ping");
+  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+  client.messageReceived.reset();
+
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackClientSide.get());
