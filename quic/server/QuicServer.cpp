@@ -214,7 +214,8 @@ std::unique_ptr<QuicServerWorker> QuicServer::newWorkerWithoutSocket() {
 
 void QuicServer::bindWorkersToSocket(
     const folly::SocketAddress& address,
-    const std::vector<folly::EventBase*>& evbs) {
+    const std::vector<folly::EventBase*>& evbs,
+    bool fromNetworkSwitch) {
   auto numWorkers = evbs.size();
   CHECK(!initialized_);
   boundAddress_ = address;
@@ -232,15 +233,20 @@ void QuicServer::bindWorkersToSocket(
          usingCCP,
          &ccpInitFailed,
          processId = processId_,
-         idx = i] {
+         idx = i,
+         fromNetworkSwitch] {
           std::lock_guard<std::mutex> guard(self->startMutex_);
           if (self->shutdown_) {
             return;
           }
-          auto workerSocket = self->listenerSocketFactory_->make(workerEvb, -1);
           auto it = self->evbToWorkers_.find(workerEvb);
           CHECK(it != self->evbToWorkers_.end());
           auto worker = it->second;
+          if (fromNetworkSwitch) {
+            worker->pauseRead();
+            worker->closeSocket();
+          }
+          auto workerSocket = self->listenerSocketFactory_->make(workerEvb, -1);
           int takeoverOverFd = -1;
           if (self->listeningFDs_.size() > idx) {
             takeoverOverFd = self->listeningFDs_[idx];
@@ -297,6 +303,9 @@ void QuicServer::bindWorkersToSocket(
             VLOG(4) << "Initialized all workers in the eventbase";
             self->initialized_ = true;
             self->startCv_.notify_all();
+          }
+          if (fromNetworkSwitch) {
+            worker->onNetworkSwitch();
           }
         });
   }
@@ -856,15 +865,11 @@ void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
     LOG(ERROR) << "Impossible to change the address due to IP version mismatch";
     return;
   }
-  pauseRead();
-  closeSocket();
-
   // TODO test server migration together with CCP and socket takeover.
   auto evbs = getWorkerEvbs();
   initialized_ = false;
-  bindWorkersToSocket(newAddress, evbs);
-  runOnAllWorkersSync([&](auto worker) mutable { worker->onNetworkSwitch(); });
-
+  bindWorkersToSocket(newAddress, evbs, true);
+  waitUntilInitialized();
   resumeRead();
   // Start again to accept new connections.
   rejectNewConnections([]() { return false; });

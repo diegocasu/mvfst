@@ -466,7 +466,8 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
 
   void bindWorkersToSocket(
       const folly::SocketAddress& address,
-      const std::vector<folly::EventBase*>& evbs);
+      const std::vector<folly::EventBase*>& evbs,
+      bool fromNetworkSwitch = false);
 
   std::vector<QuicVersion> supportedVersions_{
       {QuicVersion::MVFST,
