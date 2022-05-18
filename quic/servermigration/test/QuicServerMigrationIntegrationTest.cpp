@@ -76,10 +76,8 @@ class QuicServerMigrationIntegrationTestClient
   void onConnectionError(QuicError error) noexcept override {
     LOG(ERROR) << "Connection error: " << toString(error.code)
                << "; errStr=" << error.message;
-    EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
-    if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
-      auto errorCode = *error.code.asLocalErrorCode();
-      EXPECT_EQ(errorCode, LocalErrorCode::SHUTTING_DOWN);
+    if (connectionErrorTestPredicate) {
+      connectionErrorTestPredicate(error);
     }
     startDone_.post();
   }
@@ -206,6 +204,11 @@ class QuicServerMigrationIntegrationTestClient
     });
   }
 
+  void setConnectionErrorTestPredicate(
+      std::function<void(QuicError)> predicate) {
+    connectionErrorTestPredicate = std::move(predicate);
+  }
+
   std::string clientHost;
   uint16_t clientPort;
   std::string serverHost;
@@ -223,6 +226,9 @@ class QuicServerMigrationIntegrationTestClient
   // Maps used to read/write messages.
   std::map<quic::StreamId, BufQueue> pendingOutput_;
   std::map<quic::StreamId, uint64_t> recvOffsets_;
+
+  // Test predicates.
+  std::function<void(QuicError)> connectionErrorTestPredicate;
 };
 
 class QuicServerMigrationIntegrationTestServer {
@@ -469,6 +475,21 @@ class QuicServerMigrationIntegrationTestServer {
 };
 
 class QuicServerMigrationIntegrationTest : public Test {
+  void SetUp() override {
+    defaultTestPredicate = [=](QuicError error) {
+      EXPECT_NE(error.code.type(), QuicErrorCode::Type::TransportErrorCode);
+      if (error.code.type() == QuicErrorCode::Type::LocalErrorCode) {
+        auto errorCode = *error.code.asLocalErrorCode();
+        EXPECT_EQ(errorCode, LocalErrorCode::SHUTTING_DOWN);
+      }
+    };
+    handshakeRejectedTestPredicate = [=](QuicError error) {
+      ASSERT_EQ(error.code.type(), QuicErrorCode::Type::LocalErrorCode);
+      EXPECT_EQ(
+          *error.code.asLocalErrorCode(), LocalErrorCode::CONNECTION_ABANDONED);
+    };
+  }
+
  public:
   std::string serverIP{"127.0.0.1"};
   uint16_t serverPort{50000};
@@ -478,6 +499,10 @@ class QuicServerMigrationIntegrationTest : public Test {
   std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
   std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
   std::chrono::seconds batonTimeout{5};
+
+  // Test predicates.
+  std::function<void(QuicError)> defaultTestPredicate;
+  std::function<void(QuicError)> handshakeRejectedTestPredicate;
 };
 
 TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
@@ -514,6 +539,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -558,6 +584,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -603,6 +630,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -659,6 +687,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -698,6 +727,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -735,6 +765,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -812,6 +843,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -869,6 +901,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -925,6 +958,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -983,6 +1017,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -1043,6 +1078,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -1201,6 +1237,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -1344,6 +1381,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
@@ -1463,6 +1501,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
+  client.setConnectionErrorTestPredicate(defaultTestPredicate);
   client.start();
   client.startDone_.wait();
 
