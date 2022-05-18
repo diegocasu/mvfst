@@ -1594,5 +1594,97 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
   server.server->shutdown();
 }
 
+TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigration) {
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  std::string serverCidHex;
+
+  auto clientStateUpdateCallback =
+      std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
+  auto serverMigrationEventCallbackServerSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+  auto serverMigrationEventCallbackClientSide =
+      std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
+
+  QuicServerMigrationIntegrationTestServer server(
+      serverIP,
+      serverPort,
+      serverSupportedProtocols,
+      clientStateUpdateCallback,
+      serverMigrationEventCallbackServerSide,
+      poolMigrationAddresses);
+  server.start();
+  server.server->waitUntilInitialized();
+
+  // Notify imminent server migration. Since no clients are connected to the
+  // server, this operation will only block handshakes from new clients until
+  // onNetworkSwitch() is called. No calls to onServerMigrationFailed() or
+  // onServerMigrationReady() are expected.
+  folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
+  ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+  server.server->onImminentServerMigration(
+      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  // Try to connect a client. This attempt should be rejected.
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished).Times(0);
+  EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose).Times(0);
+  QuicServerMigrationIntegrationTestClient rejectedClient(
+      clientIP,
+      clientPort,
+      serverIP,
+      serverPort,
+      clientSupportedProtocols,
+      serverMigrationEventCallbackClientSide);
+  rejectedClient.setConnectionErrorTestPredicate(
+      handshakeRejectedTestPredicate);
+  rejectedClient.start();
+  rejectedClient.startDone_.wait();
+  rejectedClient.close();
+  Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
+
+  // Complete the server migration and unblock the new handshakes.
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](folly::SocketAddress clientAddress,
+                    ConnectionId serverConnectionId,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
+        EXPECT_EQ(clientAddress, folly::SocketAddress(clientIP, clientPort));
+        ASSERT_TRUE(negotiatedProtocols.has_value());
+        EXPECT_EQ(negotiatedProtocols->size(), 1);
+        EXPECT_TRUE(
+            negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
+        serverCidHex = serverConnectionId.hex();
+      });
+
+  server.server->onNetworkSwitch(serverMigrationAddress);
+  EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
+
+  QuicServerMigrationIntegrationTestClient acceptedClient(
+      clientIP,
+      clientPort,
+      serverMigrationAddress.getAddressStr(),
+      serverMigrationAddress.getPort(),
+      clientSupportedProtocols,
+      serverMigrationEventCallbackClientSide);
+  acceptedClient.setConnectionErrorTestPredicate(defaultTestPredicate);
+  acceptedClient.start();
+  acceptedClient.startDone_.wait();
+
+  acceptedClient.send("ping");
+  EXPECT_TRUE(acceptedClient.messageReceived.try_wait_for(batonTimeout));
+  acceptedClient.messageReceived.reset();
+  Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
+
+  // Close the connection.
+  EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId) {
+        EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
+      });
+  acceptedClient.close();
+  server.server->shutdown();
+}
+
 } // namespace test
 } // namespace quic
