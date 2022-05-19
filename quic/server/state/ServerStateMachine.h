@@ -21,8 +21,8 @@
 #include <quic/server/handshake/ServerHandshake.h>
 #include <quic/server/handshake/ServerHandshakeFactory.h>
 #include <quic/server/state/ServerConnectionIdRejector.h>
-#include <quic/servermigration/QuicServerMigrationNegotiatorServer.h>
 #include <quic/servermigration/Callbacks.h>
+#include <quic/servermigration/QuicServerMigrationNegotiatorServer.h>
 #include <quic/state/AckHandlers.h>
 #include <quic/state/QuicStateFunctions.h>
 #include <quic/state/QuicStreamFunctions.h>
