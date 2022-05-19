@@ -423,11 +423,13 @@ class QuicServerMigrationIntegrationTestServer {
       }
 
       handler->setQuicSocket(transport);
+      std::lock_guard<std::mutex> guard(handlers_mutex);
       handlers.push_back(std::move(handler));
       return transport;
     }
 
     std::vector<std::unique_ptr<MessageHandler>> handlers;
+    std::mutex handlers_mutex;
     std::unordered_set<ServerMigrationProtocol> migrationProtocols;
     std::unordered_set<QuicIPAddress, QuicIPAddressHash> poolMigrationAddresses;
     std::shared_ptr<ClientStateUpdateCallback> clientStateCallback;
