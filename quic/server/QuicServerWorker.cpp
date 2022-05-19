@@ -1435,36 +1435,35 @@ void QuicServerWorker::getAllConnectionsStats(
 
 void QuicServerWorker::onImminentServerMigration(
     const ServerMigrationSettings& migrationSettings) {
-  auto cidMapIt = connectionIdMap_.begin();
-  while (cidMapIt != connectionIdMap_.end()) {
-    // The method that will be called on the transport pointed by cidMapIt
-    // could close it, thus removing the transport from connectionIdMap_ while
-    // iterating. Since it is guaranteed that only the iterator involved in
-    // the removal from the map is invalidated, the iterator pointing to the
-    // next entry is saved here and will be used to update cidMapIt before
-    // the next while() iteration.
-    auto nextCidMapIt = cidMapIt;
-    ++nextCidMapIt;
+  // The goal here is to call either onImminentServerMigration() or closeNow()
+  // on all the transports managed by this worker, which are contained in
+  // connectionIdMap_ and sourceAddressMap_. Given that both an erroneous
+  // onImminentServerMigration() and closeNow() end up removing the involved
+  // transport from its container, this is a case of "erase while iterating".
+  // Since the erasure is done by onConnectionUnbound(), it is not possible to
+  // iterate and call the methods at the same time, so two loops are performed:
+  // the first saves the transports, the second calls the methods on them.
+  using TransportMigrationDetails = std::pair<
+      std::shared_ptr<QuicServerTransport>,
+      ServerMigrationSettings::const_iterator>;
+  std::vector<TransportMigrationDetails> transportsToMigrate;
+  std::vector<std::shared_ptr<QuicServerTransport>> transportsToClose;
 
-    auto it = migrationSettings.find(cidMapIt->first);
+  for (auto& element : connectionIdMap_) {
+    auto it = migrationSettings.find(element.first);
     if (it != migrationSettings.end()) {
-      cidMapIt->second->onImminentServerMigration(
-          it->second.first, it->second.second);
-      cidMapIt = nextCidMapIt;
+      transportsToMigrate.emplace_back(std::make_pair(element.second, it));
       continue;
     }
-
     // Check if this CID is an alias for a CID involved in the migration or not.
-    auto transportOriginalCid = cidMapIt->second->getOriginalConnectionId();
+    auto transportOriginalCid = element.second->getOriginalConnectionId();
     if (transportOriginalCid) {
       it = migrationSettings.find(transportOriginalCid.value());
       if (it != migrationSettings.end()) {
         // The CID is an alias. Ignore it, because either the original
-        // CID in connectionIdMap_ has already been found and
-        // onImminentServerMigration() called, or it will be in one of
-        // the next iterations. This avoids calling onImminentServerMigration()
-        // multiple times.
-        cidMapIt = nextCidMapIt;
+        // CID in connectionIdMap_ has already been found, or it will be
+        // in one of the next iterations. This avoids calling
+        // onImminentServerMigration() multiple times.
         continue;
       }
     }
@@ -1473,59 +1472,56 @@ void QuicServerWorker::onImminentServerMigration(
     // migration. Then, close the transport. Since calling closeNow() multiple
     // times on the same transport is not a problem, it is not necessary
     // to make further checks.
-    cidMapIt->second->closeNow(QuicError(
-        QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
-        "Server performed a migration"));
-    cidMapIt = nextCidMapIt;
+    transportsToClose.push_back(element.second);
   }
 
   // Close all the transports still in the handshake phase.
-  auto sourceAddressMapIt = sourceAddressMap_.begin();
-  while (sourceAddressMapIt != sourceAddressMap_.end()) {
-    auto nextSourceAddressMapIt = sourceAddressMapIt;
-    ++nextSourceAddressMapIt;
-    sourceAddressMapIt->second->closeNow(QuicError(
+  for (auto& element : sourceAddressMap_) {
+    transportsToClose.push_back(element.second);
+  }
+
+  // Finally, call the methods.
+  for (auto& transport : transportsToMigrate) {
+    transport.first->onImminentServerMigration(
+        transport.second->second.first, transport.second->second.second);
+  }
+  for (auto& transport : transportsToClose) {
+    transport->closeNow(QuicError(
         QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
         "Server performed a migration"));
-    sourceAddressMapIt = nextSourceAddressMapIt;
   }
 }
 
 void QuicServerWorker::onImminentServerMigration(
     const ServerMigrationProtocol& protocol,
     const folly::Optional<QuicIPAddress>& migrationAddress) {
-  std::unordered_set<std::shared_ptr<QuicServerTransport>> processedTransports;
-  auto cidMapIt = connectionIdMap_.begin();
-  while (cidMapIt != connectionIdMap_.end()) {
-    // The method that will be called on the transport pointed by cidMapIt
-    // could close it, thus removing the transport from connectionIdMap_ while
-    // iterating. Since it is guaranteed that only the iterator involved in
-    // the removal from the map is invalidated, the iterator pointing to the
-    // next entry is saved here and will be used to update cidMapIt before
-    // the next while() iteration.
-    auto nextCidMapIt = cidMapIt;
-    ++nextCidMapIt;
+  std::unordered_set<std::shared_ptr<QuicServerTransport>> transportsToMigrate;
+  std::vector<std::shared_ptr<QuicServerTransport>> transportsToClose;
 
+  // Save the transport pointers. See the other overload of
+  // onImminentServerMigration() for the reasoning behind
+  // the choice of performing two loops.
+  for (auto& element : connectionIdMap_) {
     // Avoid calling onImminentServerMigration() multiple times
     // on the same transport if there are CID aliases.
-    if (!processedTransports.count(cidMapIt->second)) {
-      processedTransports.insert(cidMapIt->second);
-      cidMapIt->second->onImminentServerMigration(protocol, migrationAddress);
-      cidMapIt = nextCidMapIt;
-      continue;
+    if (!transportsToMigrate.count(element.second)) {
+      transportsToMigrate.insert(element.second);
     }
-    cidMapIt = nextCidMapIt;
   }
 
   // Close all the transports still in the handshake phase.
-  auto sourceAddressMapIt = sourceAddressMap_.begin();
-  while (sourceAddressMapIt != sourceAddressMap_.end()) {
-    auto nextSourceAddressMapIt = sourceAddressMapIt;
-    ++nextSourceAddressMapIt;
-    sourceAddressMapIt->second->closeNow(QuicError(
+  for (auto& element : sourceAddressMap_) {
+    transportsToClose.push_back(element.second);
+  }
+
+  // Finally, call the methods.
+  for (auto& transport : transportsToMigrate) {
+    transport->onImminentServerMigration(protocol, migrationAddress);
+  }
+  for (auto& transport : transportsToClose) {
+    transport->closeNow(QuicError(
         QuicErrorCode(LocalErrorCode::SERVER_MIGRATED),
         "Server performed a migration"));
-    sourceAddressMapIt = nextSourceAddressMapIt;
   }
 }
 
