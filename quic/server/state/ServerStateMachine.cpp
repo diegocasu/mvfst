@@ -1029,8 +1029,10 @@ void onServerReadDataFromOpen(
                         *packetFrame.asQuicSimpleFrame();
                     if (frame.type() ==
                         QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+                      const auto& serverMigrationFrame =
+                          *frame.asQuicServerMigrationFrame();
                       updateServerMigrationFrameOnPacketAckReceived(
-                          conn, *frame.asQuicServerMigrationFrame(), packetNum);
+                          conn, serverMigrationFrame, packetNum);
                       break;
                     }
                     // ACK of HandshakeDone is a server-specific behavior.
@@ -1203,8 +1205,10 @@ void onServerReadDataFromOpen(
           if (simpleFrame.type() ==
               QuicSimpleFrame::Type::QuicServerMigrationFrame) {
             isNonProbingPacket = true;
+            const auto& serverMigrationFrame =
+                *simpleFrame.asQuicServerMigrationFrame();
             updateServerMigrationFrameOnPacketReceived(
-                conn, *simpleFrame.asQuicServerMigrationFrame());
+                conn, serverMigrationFrame);
             break;
           }
           isNonProbingPacket |= updateSimpleFrameOnPacketReceived(

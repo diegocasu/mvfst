@@ -626,11 +626,10 @@ void QuicClientTransport::processPacketData(
         if (simpleFrame.type() ==
             QuicSimpleFrame::Type::QuicServerMigrationFrame) {
           isNonProbingPacket = true;
+          const auto& serverMigrationFrame =
+              *simpleFrame.asQuicServerMigrationFrame();
           updateServerMigrationFrameOnPacketReceived(
-              *clientConn_,
-              *simpleFrame.asQuicServerMigrationFrame(),
-              packetNum,
-              peer);
+              *clientConn_, serverMigrationFrame, packetNum, peer);
           break;
         }
         isNonProbingPacket |= updateSimpleFrameOnPacketReceived(

@@ -154,7 +154,7 @@ void processServerInitialParams(
           "Received server_migration_suite with server migration disabled",
           TransportErrorCode::TRANSPORT_PARAMETER_ERROR);
     }
-    conn.serverMigrationState.negotiator.value().onMigrationSuiteReceived(*it);
+    conn.serverMigrationState.negotiator->onMigrationSuiteReceived(*it);
   }
 
   // TODO Validate active_connection_id_limit

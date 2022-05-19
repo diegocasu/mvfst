@@ -783,8 +783,9 @@ void updateConnection(
         if (!packetEvent.has_value()) {
           if (simpleFrame.type() ==
               QuicSimpleFrame::Type::QuicServerMigrationFrame) {
-            updateServerMigrationFrameOnPacketSent(
-                conn, *simpleFrame.asQuicServerMigrationFrame());
+            const auto& serverMigrationFrame =
+                *simpleFrame.asQuicServerMigrationFrame();
+            updateServerMigrationFrameOnPacketSent(conn, serverMigrationFrame);
             break;
           }
           updateSimpleFrameOnPacketSent(conn, simpleFrame);

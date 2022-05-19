@@ -51,7 +51,7 @@ size_t writeSimpleFrame(
     PacketBuilderInterface& builder);
 
 /**
- * Write a QuicFrame involving server migration into builder
+ * Write a QuicFrame related to server migration into builder
  *
  * The input parameter is the frame to be written to the output appender.
  *

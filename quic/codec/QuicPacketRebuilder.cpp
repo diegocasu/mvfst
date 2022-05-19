@@ -180,8 +180,10 @@ folly::Optional<PacketEvent> PacketRebuilder::rebuildFromPacket(
         folly::Optional<QuicSimpleFrame> updatedSimpleFrame;
         if (simpleFrame.type() ==
             QuicSimpleFrame::Type::QuicServerMigrationFrame) {
+          const auto& serverMigrationFrame =
+              *simpleFrame.asQuicServerMigrationFrame();
           updatedSimpleFrame = updateServerMigrationFrameOnPacketClone(
-              conn_, *simpleFrame.asQuicServerMigrationFrame());
+              conn_, serverMigrationFrame);
         } else {
           updatedSimpleFrame =
               updateSimpleFrameOnPacketClone(conn_, simpleFrame);

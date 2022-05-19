@@ -209,8 +209,9 @@ void markPacketLoss(
           break;
         }
         if (frame.type() == QuicSimpleFrame::Type::QuicServerMigrationFrame) {
-          updateServerMigrationFrameOnPacketLoss(
-              conn, *frame.asQuicServerMigrationFrame());
+          const auto& serverMigrationFrame =
+              *frame.asQuicServerMigrationFrame();
+          updateServerMigrationFrameOnPacketLoss(conn, serverMigrationFrame);
           break;
         }
         updateSimpleFrameOnPacketLoss(conn, frame);
