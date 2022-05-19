@@ -1812,7 +1812,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
   server.server->shutdown();
 }
 
-TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleClientsWithDifferentProtocolsAtTheSameTime) {
+TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDifferentProtocolsAtTheSameTime) {
   // Server variables.
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
