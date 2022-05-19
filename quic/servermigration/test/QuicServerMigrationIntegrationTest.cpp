@@ -1300,17 +1300,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   folly::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
-      .Times(AtMost(poolMigrationAddresses.size() + 1))
-      .WillOnce([&](ServerMigrationProtocol protocol,
-                    folly::SocketAddress probingAddress) {
-        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
-        EXPECT_EQ(probingAddress, folly::SocketAddress(serverIP, serverPort));
-      })
+      .Times(AtLeast(1))
       .WillRepeatedly([&](ServerMigrationProtocol protocol,
                           folly::SocketAddress probingAddress) {
         EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
         auto it = poolMigrationAddresses.find(QuicIPAddress(probingAddress));
-        EXPECT_NE(it, poolMigrationAddresses.end());
+        EXPECT_TRUE(
+            it != poolMigrationAddresses.end() ||
+            probingAddress == folly::SocketAddress(serverIP, serverPort));
       });
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
@@ -2986,17 +2983,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
   folly::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
-      .Times(AtMost(poolMigrationAddresses.size()))
-      .WillOnce([&](ServerMigrationProtocol protocol,
-                    folly::SocketAddress probingAddress) {
-        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
-        EXPECT_EQ(probingAddress, folly::SocketAddress(serverIP, serverPort));
-      })
+      .Times(AtLeast(1))
       .WillRepeatedly([&](ServerMigrationProtocol protocol,
                           folly::SocketAddress probingAddress) {
         EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
         auto it = poolMigrationAddresses.find(QuicIPAddress(probingAddress));
-        EXPECT_NE(it, poolMigrationAddresses.end());
+        EXPECT_TRUE(
+            it != poolMigrationAddresses.end() ||
+            probingAddress == folly::SocketAddress(serverIP, serverPort));
       });
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
@@ -3047,17 +3041,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
   // Start the second migration.
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
-      .Times(AtMost(poolMigrationAddresses.size()))
-      .WillOnce([&](ServerMigrationProtocol protocol,
-                    folly::SocketAddress probingAddress) {
-        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
-        EXPECT_EQ(probingAddress, firstServerMigrationAddress);
-      })
+      .Times(AtLeast(1))
       .WillRepeatedly([&](ServerMigrationProtocol protocol,
                           folly::SocketAddress probingAddress) {
         EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
         auto it = poolMigrationAddresses.find(QuicIPAddress(probingAddress));
-        EXPECT_NE(it, poolMigrationAddresses.end());
+        EXPECT_TRUE(
+            it != poolMigrationAddresses.end() ||
+            probingAddress == firstServerMigrationAddress);
       });
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationCompleted())
