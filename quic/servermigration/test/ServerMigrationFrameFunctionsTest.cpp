@@ -1115,12 +1115,15 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
       ExplicitClientState(migrationAddress);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
+  auto peerAddressBeforeProbing = clientState.peerAddress;
 
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
       clientState.peerAddress);
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
+  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  ASSERT_FALSE(protocolState->callbackNotified);
   ASSERT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
@@ -1131,6 +1134,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_FALSE(protocolState->callbackNotified);
   EXPECT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
   protocolState->probingFinished = false;
@@ -1142,6 +1147,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
       migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
@@ -1159,6 +1167,9 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
 }
@@ -1170,6 +1181,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
+  protocolState->serverAddressBeforeProbing = clientState.peerAddress;
 
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
@@ -1179,9 +1191,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
 
-  // Test end probing with peer address not matching the expected one.
+  // Test end probing with peer address not matching the
+  // expected one or the peer address before probing.
   folly::SocketAddress badPeerAddress("127.1.1.10", 12345);
   ASSERT_NE(badPeerAddress, migrationAddress.getIPv4AddressAsSocketAddress());
+  ASSERT_NE(badPeerAddress, protocolState->serverAddressBeforeProbing);
   maybeEndServerMigrationProbing(clientState, badPeerAddress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(protocolState->probingInProgress);
@@ -1207,6 +1221,37 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   EXPECT_TRUE(protocolState->probingFinished);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbingWithAddressBeforeProbing) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  protocolState->probingFinished = false;
+  protocolState->serverAddressBeforeProbing = clientState.peerAddress;
+  protocolState->callbackNotified = true;
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  auto peerAddressBeforeProbing = protocolState->serverAddressBeforeProbing;
+  maybeEndServerMigrationProbing(
+      clientState, protocolState->serverAddressBeforeProbing);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_EQ(clientState.peerAddress, peerAddressBeforeProbing);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMigrationProbing) {

@@ -626,13 +626,16 @@ void maybeUpdateExplicitServerMigrationProbing(
       .emplace_back(std::move(congestionRttState));
   resetCongestionAndRttState(connectionState);
 
+  protocolState->serverAddressBeforeProbing = connectionState.peerAddress;
   connectionState.peerAddress =
       connectionState.peerAddress.getIPAddress().isV4()
       ? protocolState->migrationAddress.getIPv4AddressAsSocketAddress()
       : protocolState->migrationAddress.getIPv6AddressAsSocketAddress();
   protocolState->probingInProgress = true;
 
-  if (connectionState.serverMigrationState.serverMigrationEventCallback) {
+  if (connectionState.serverMigrationState.serverMigrationEventCallback &&
+      !protocolState->callbackNotified) {
+    protocolState->callbackNotified = true;
     connectionState.serverMigrationState.serverMigrationEventCallback
         ->onServerMigrationProbingStarted(
             quic::ServerMigrationProtocol::EXPLICIT,
@@ -649,27 +652,48 @@ void maybeEndExplicitServerMigrationProbing(
       ? protocolState->migrationAddress.getIPv4AddressAsSocketAddress()
       : protocolState->migrationAddress.getIPv6AddressAsSocketAddress();
 
-  if (peerAddress != expectedPeerAddress || protocolState->probingFinished ||
-      !protocolState->probingInProgress) {
+  if (protocolState->probingFinished || !protocolState->probingInProgress) {
     return;
   }
+  if (peerAddress == protocolState->serverAddressBeforeProbing) {
+    // The highest-numbered non-probing packet arrived from the old server
+    // address, most likely due to the loss of the SERVER_MIGRATION
+    // acknowledgement. Then, stop the probing and roll back to the
+    // pre-probing state: the migration probing will restart at the next PTO.
+    // Note that the callback state is not reset, meaning that the callback
+    // will not be invoked again at the next PTO. This is not needed, because
+    // the next PTO will restart the same migration probing that was
+    // previously notified.
+    connectionState.peerAddress = protocolState->serverAddressBeforeProbing;
+    protocolState->serverAddressBeforeProbing = folly::SocketAddress();
+    protocolState->probingInProgress = false;
+    protocolState->probingFinished = false;
+    restoreCongestionAndRttState(
+        connectionState,
+        std::move(connectionState.serverMigrationState
+                      .previousCongestionAndRttStates.back()));
+    connectionState.serverMigrationState.previousCongestionAndRttStates
+        .pop_back();
+    return;
+  }
+  if (peerAddress == expectedPeerAddress) {
+    // Stop the probing.
+    protocolState->probingInProgress = false;
+    protocolState->probingFinished = true;
 
-  // Stop the probing.
-  protocolState->probingInProgress = false;
-  protocolState->probingFinished = true;
+    // Start path validation. The retransmission of PATH_CHALLENGE frames
+    // is done automatically when a packet is marked as lost.
+    uint64_t pathData;
+    folly::Random::secureRandom(&pathData, sizeof(pathData));
+    connectionState.pendingEvents.pathChallenge =
+        quic::PathChallengeFrame(pathData);
 
-  // Start path validation. The retransmission of PATH_CHALLENGE frames
-  // is done automatically when a packet is marked as lost.
-  uint64_t pathData;
-  folly::Random::secureRandom(&pathData, sizeof(pathData));
-  connectionState.pendingEvents.pathChallenge =
-      quic::PathChallengeFrame(pathData);
-
-  // Set the anti-amplification limit for the non-validated path.
-  // This limit is automatically ignored after a path validation succeeds.
-  connectionState.pathValidationLimiter =
-      std::make_unique<quic::PendingPathRateLimiter>(
-          connectionState.udpSendPacketLen);
+    // Set the anti-amplification limit for the non-validated path.
+    // This limit is automatically ignored after a path validation succeeds.
+    connectionState.pathValidationLimiter =
+        std::make_unique<quic::PendingPathRateLimiter>(
+            connectionState.udpSendPacketLen);
+  }
 }
 
 void maybeUpdatePoolOfAddressesServerMigrationProbing(

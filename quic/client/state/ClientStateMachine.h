@@ -57,16 +57,20 @@ struct PoolOfAddressesClientState {
 
 struct ExplicitClientState {
   QuicIPAddress migrationAddress;
+  folly::SocketAddress serverAddressBeforeProbing;
   bool probingInProgress{false};
   bool probingFinished{false};
+  bool callbackNotified{false};
 
   ExplicitClientState(QuicIPAddress migrationAddress)
       : migrationAddress(std::move(migrationAddress)) {}
 
   bool operator==(const ExplicitClientState& rhs) const {
     return migrationAddress == rhs.migrationAddress &&
+        serverAddressBeforeProbing == rhs.serverAddressBeforeProbing &&
         probingInProgress == rhs.probingInProgress &&
-        probingFinished == rhs.probingFinished;
+        probingFinished == rhs.probingFinished &&
+        callbackNotified == rhs.callbackNotified;
   }
 
   bool operator!=(const ExplicitClientState& rhs) const {

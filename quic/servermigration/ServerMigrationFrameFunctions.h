@@ -94,11 +94,11 @@ void maybeUpdateServerMigrationProbing(
 /**
  * Ends a server migration probing and starts a path validation, if a probing
  * is ongoing. It must be called only if a server migration protocol state has
- * already been created and a non-probing packet has been received.
+ * already been created and the highest-numbered non-probing packet
+ * has been received.
  * @param connectionState  the client connection state.
- * @param peerAddress      the address from which the non-probing packet has
- *                         been received. If it does not match the expected
- *                         migration address, the function does nothing.
+ * @param peerAddress      the address from which the highest-numbered
+ *                         non-probing packet has been received.
  */
 void maybeEndServerMigrationProbing(
     QuicClientConnectionState& connectionState,
