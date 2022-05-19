@@ -2,7 +2,7 @@
 
 #include <folly/portability/GMock.h>
 #include <quic/servermigration/PoolMigrationAddressSchedulerFactory.h>
-#include <quic/servermigration/management/Callbacks.h>
+#include <quic/servermigration/Callbacks.h>
 
 namespace quic {
 
