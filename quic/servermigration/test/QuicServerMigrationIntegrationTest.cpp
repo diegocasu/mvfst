@@ -168,7 +168,7 @@ class QuicServerMigrationIntegrationTestClient
 
       TransportSettings settings;
       settings.maxNumPTOs = 50;
-      settings.selfActiveConnectionIdLimit = 20;
+      settings.selfActiveConnectionIdLimit = 10;
       transport->setTransportSettings(settings);
 
       if (!migrationProtocols.empty()) {
@@ -461,7 +461,7 @@ class QuicServerMigrationIntegrationTestServer {
     TransportSettings settings;
     settings.disableMigration = false;
     settings.maxNumPTOs = 50;
-    settings.selfActiveConnectionIdLimit = 20;
+    settings.selfActiveConnectionIdLimit = 10;
     server->setTransportSettings(settings);
   }
 
