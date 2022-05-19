@@ -152,6 +152,28 @@ folly::dynamic DatagramFrameLog::toDynamic() const {
   return d;
 }
 
+folly::dynamic ServerMigrationFrameLog::toDynamic() const {
+  folly::dynamic d = folly::dynamic::object();
+  d["frame_type"] = toQlogString(FrameType::SERVER_MIGRATION);
+  d["address"] = address.getIPv4AddressAsSocketAddress().describe() + "|" +
+      address.getIPv6AddressAsSocketAddress().describe();
+  return d;
+}
+
+folly::dynamic ServerMigratedFrameLog::toDynamic() const {
+  folly::dynamic d = folly::dynamic::object();
+  d["frame_type"] = toQlogString(FrameType::SERVER_MIGRATED);
+  return d;
+}
+
+folly::dynamic PoolMigrationAddressFrameLog::toDynamic() const {
+  folly::dynamic d = folly::dynamic::object();
+  d["frame_type"] = toQlogString(FrameType::POOL_MIGRATION_ADDRESS);
+  d["address"] = address.getIPv4AddressAsSocketAddress().describe() + "|" +
+      address.getIPv6AddressAsSocketAddress().describe();
+  return d;
+}
+
 folly::dynamic CryptoFrameLog::toDynamic() const {
   folly::dynamic d = folly::dynamic::object();
   d["frame_type"] = toQlogString(FrameType::CRYPTO_FRAME);

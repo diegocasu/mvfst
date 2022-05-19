@@ -312,6 +312,32 @@ class DatagramFrameLog : public QLogFrame {
   FOLLY_NODISCARD folly::dynamic toDynamic() const override;
 };
 
+class ServerMigrationFrameLog : public QLogFrame {
+ public:
+  QuicIPAddress address;
+
+  explicit ServerMigrationFrameLog(QuicIPAddress address) : address(address) {}
+  ~ServerMigrationFrameLog() override = default;
+  FOLLY_NODISCARD folly::dynamic toDynamic() const override;
+};
+
+class ServerMigratedFrameLog : public QLogFrame {
+ public:
+  ServerMigratedFrameLog() = default;
+  ~ServerMigratedFrameLog() override = default;
+  FOLLY_NODISCARD folly::dynamic toDynamic() const override;
+};
+
+class PoolMigrationAddressFrameLog : public QLogFrame {
+ public:
+  QuicIPAddress address;
+
+  explicit PoolMigrationAddressFrameLog(QuicIPAddress address)
+      : address(address) {}
+  ~PoolMigrationAddressFrameLog() override = default;
+  FOLLY_NODISCARD folly::dynamic toDynamic() const override;
+};
+
 class VersionNegotiationLog {
  public:
   std::vector<QuicVersion> versions;

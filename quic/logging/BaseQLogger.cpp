@@ -8,6 +8,30 @@
 #include <quic/logging/BaseQLogger.h>
 
 namespace {
+
+void addQuicServerMigrationFrameToEvent(
+    quic::QLogPacketEvent* event,
+    const quic::QuicServerMigrationFrame& serverMigrationFrame) {
+  switch (serverMigrationFrame.type()) {
+    case quic::QuicServerMigrationFrame::Type::ServerMigrationFrame: {
+      const auto& frame = *serverMigrationFrame.asServerMigrationFrame();
+      event->frames.push_back(
+          std::make_unique<quic::ServerMigrationFrameLog>(frame.address));
+      break;
+    }
+    case quic::QuicServerMigrationFrame::Type::ServerMigratedFrame: {
+      event->frames.push_back(std::make_unique<quic::ServerMigratedFrameLog>());
+      break;
+    }
+    case quic::QuicServerMigrationFrame::Type::PoolMigrationAddressFrame: {
+      const auto& frame = *serverMigrationFrame.asPoolMigrationAddressFrame();
+      event->frames.push_back(
+          std::make_unique<quic::PoolMigrationAddressFrameLog>(frame.address));
+      break;
+    }
+  }
+}
+
 void addQuicSimpleFrameToEvent(
     quic::QLogPacketEvent* event,
     const quic::QuicSimpleFrame& simpleFrame) {
@@ -77,6 +101,11 @@ void addQuicSimpleFrameToEvent(
           std::make_unique<quic::NewTokenFrameLog>(frame.token));
       break;
     }
+    case quic::QuicSimpleFrame::Type::QuicServerMigrationFrame:
+      const auto& serverMigrationFrame =
+          *simpleFrame.asQuicServerMigrationFrame();
+      addQuicServerMigrationFrameToEvent(event, serverMigrationFrame);
+      break;
   }
 }
 } // namespace

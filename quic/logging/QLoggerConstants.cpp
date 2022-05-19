@@ -79,6 +79,12 @@ folly::StringPiece toQlogString(FrameType frame) {
       return "knob";
     case FrameType::ACK_FREQUENCY:
       return "ack_frequency";
+    case FrameType::SERVER_MIGRATION:
+      return "server_migration";
+    case FrameType::SERVER_MIGRATED:
+      return "server_migrated";
+    case FrameType::POOL_MIGRATION_ADDRESS:
+      return "pool_migration_address";
   }
   folly::assume_unreachable();
 }
