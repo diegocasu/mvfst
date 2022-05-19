@@ -2448,6 +2448,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
   // managing the first client. The other two transports should close the
   // connection.
   folly::Baton serverMigrationReadyBaton;
+  std::atomic<int> nServerTransportsReady = 0;
   QuicServer::ServerMigrationSettings migrationSettings;
   migrationSettings[serverCids.at(firstClientAddress)] = std::make_pair(
       ServerMigrationProtocol::EXPLICIT, quicIpServerMigrationAddress);
@@ -2471,6 +2472,10 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
         EXPECT_TRUE(
             serverConnectionId == serverCids.at(secondClientAddress) ||
             serverConnectionId == serverCids.at(thirdClientAddress));
+        ++nServerTransportsReady;
+        if (nServerTransportsReady == 3) {
+          serverMigrationReadyBaton.post();
+        }
       });
   EXPECT_CALL(
       *serverMigrationEventCallbackServerSide, onServerMigrationAckReceived)
@@ -2486,7 +2491,10 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       .Times(Exactly(1))
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId, serverCids.at(firstClientAddress));
-        serverMigrationReadyBaton.post();
+        ++nServerTransportsReady;
+        if (nServerTransportsReady == 3) {
+          serverMigrationReadyBaton.post();
+        }
       });
 
   server.server->onImminentServerMigration(migrationSettings);
