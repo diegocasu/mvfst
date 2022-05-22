@@ -843,7 +843,8 @@ TEST_F(DecodeTest, TestDecodeServerMigratedFrame) {
   memset(buf->writableData(), 0, 1);
 
   folly::io::Cursor cursor(buf.get());
-  decodeServerMigratedFrame(cursor);
+  auto decodedFrame = decodeServerMigratedFrame(cursor);
+  EXPECT_EQ(decodedFrame, ServerMigratedFrame());
 }
 
 std::unique_ptr<folly::IOBuf> createPoolMigrationAddressFrame(

@@ -19,45 +19,55 @@ class QuicIPAddressTest : public Test {
   uint16_t emptyPort = 0;
 };
 
-TEST_F(QuicIPAddressTest, TestInitializationWithSingleFamily) {
+TEST_F(QuicIPAddressTest, TestInitializationWithOnlyIPAddressV4) {
   QuicIPAddress fromIpv4(ipv4Address, ipv4Port);
   EXPECT_EQ(fromIpv4.ipv4Address, ipv4Address);
   EXPECT_EQ(fromIpv4.ipv4Port, ipv4Port);
   EXPECT_TRUE(fromIpv4.ipv6Address.isZero());
   EXPECT_EQ(fromIpv4.ipv6Port, emptyPort);
+}
 
-  QuicIPAddress fromIpv4WithSockAddr(ipv4SocketAddress);
-  EXPECT_EQ(fromIpv4WithSockAddr.ipv4Address, ipv4Address);
-  EXPECT_EQ(fromIpv4WithSockAddr.ipv4Port, ipv4Port);
-  EXPECT_TRUE(fromIpv4WithSockAddr.ipv6Address.isZero());
-  EXPECT_EQ(fromIpv4WithSockAddr.ipv6Port, emptyPort);
+TEST_F(QuicIPAddressTest, TestInitializationWithOnlySocketAddressV4) {
+  QuicIPAddress fromSockAddrV4(ipv4SocketAddress);
+  EXPECT_EQ(fromSockAddrV4.ipv4Address, ipv4Address);
+  EXPECT_EQ(fromSockAddrV4.ipv4Port, ipv4Port);
+  EXPECT_TRUE(fromSockAddrV4.ipv6Address.isZero());
+  EXPECT_EQ(fromSockAddrV4.ipv6Port, emptyPort);
+}
 
+TEST_F(QuicIPAddressTest, TestInitializationWithOnlyIPAddressV6) {
   QuicIPAddress fromIpv6(ipv6Address, ipv6Port);
   EXPECT_TRUE(fromIpv6.ipv4Address.isZero());
   EXPECT_EQ(fromIpv6.ipv4Port, emptyPort);
   EXPECT_EQ(fromIpv6.ipv6Address, ipv6Address);
   EXPECT_EQ(fromIpv6.ipv6Port, ipv6Port);
-
-  QuicIPAddress fromIpv6WithSockAddr(ipv6SocketAddress);
-  EXPECT_TRUE(fromIpv6WithSockAddr.ipv4Address.isZero());
-  EXPECT_EQ(fromIpv6WithSockAddr.ipv4Port, emptyPort);
-  EXPECT_EQ(fromIpv6WithSockAddr.ipv6Address, ipv6Address);
-  EXPECT_EQ(fromIpv6WithSockAddr.ipv6Port, ipv6Port);
 }
 
-TEST_F(QuicIPAddressTest, TestInitializationWithBothFamilies) {
+TEST_F(QuicIPAddressTest, TestInitializationWithOnlySocketAddressV6) {
+  QuicIPAddress fromSockAddrV6(ipv6SocketAddress);
+  EXPECT_TRUE(fromSockAddrV6.ipv4Address.isZero());
+  EXPECT_EQ(fromSockAddrV6.ipv4Port, emptyPort);
+  EXPECT_EQ(fromSockAddrV6.ipv6Address, ipv6Address);
+  EXPECT_EQ(fromSockAddrV6.ipv6Port, ipv6Port);
+}
+
+TEST_F(QuicIPAddressTest, TestInitializationWithIPAddressesOfBothFamilies) {
   QuicIPAddress fromIpAddresses(ipv4Address, ipv4Port, ipv6Address, ipv6Port);
   EXPECT_EQ(fromIpAddresses.ipv4Address, ipv4Address);
   EXPECT_EQ(fromIpAddresses.ipv4Port, ipv4Port);
   EXPECT_EQ(fromIpAddresses.ipv6Address, ipv6Address);
   EXPECT_EQ(fromIpAddresses.ipv6Port, ipv6Port);
+}
 
+TEST_F(QuicIPAddressTest, TestInitializationWithSocketAddressesOfBothFamilies) {
   QuicIPAddress fromSockAddresses(ipv4SocketAddress, ipv6SocketAddress);
   EXPECT_EQ(fromSockAddresses.ipv4Address, ipv4Address);
   EXPECT_EQ(fromSockAddresses.ipv4Port, ipv4Port);
   EXPECT_EQ(fromSockAddresses.ipv6Address, ipv6Address);
   EXPECT_EQ(fromSockAddresses.ipv6Port, ipv6Port);
+}
 
+TEST_F(QuicIPAddressTest, TestInitializationWithSocketAddressesNotMatchingTheExpectedIPAddressFamily) {
   // Attempt to initialize a V4 address starting from a V6 one and vice-versa.
   ASSERT_DEATH(
       QuicIPAddress frameFromWrongSockAddresses(
@@ -70,6 +80,8 @@ TEST_F(QuicIPAddressTest, TestAllZeroRepresentation) {
   EXPECT_FALSE(notAllZero.isAllZero());
 
   notAllZero = QuicIPAddress(ipv4SocketAddress);
+  EXPECT_FALSE(notAllZero.isAllZero());
+  notAllZero = QuicIPAddress(ipv6SocketAddress);
   EXPECT_FALSE(notAllZero.isAllZero());
 
   QuicIPAddress allZero;

@@ -1485,13 +1485,18 @@ TEST_F(QuicServerWorkerTest, TestOnImminentServerMigrationWithSpecifiedIds) {
   moveCidToConnectionIdMap(transport5, connId5);
 
   // Create two CID aliases for transport3.
-  worker_->onConnectionIdAvailable(
-      transport3, getTestConnectionId(hostId_ + 100));
-  worker_->onConnectionIdAvailable(
-      transport3, getTestConnectionId(hostId_ + 101));
+  auto alias1 = getTestConnectionId(hostId_ + 100);
+  ASSERT_NE(alias1, connId3);
+  worker_->onConnectionIdAvailable(transport3, alias1);
+  auto alias2 = getTestConnectionId(hostId_ + 101);
+  ASSERT_NE(alias2, connId3);
+  worker_->onConnectionIdAvailable(transport3, alias2);
 
+  // Verify that the starting conditions are the expected ones.
   ASSERT_EQ(worker_->getSrcToTransportMap().size(), 2);
   ASSERT_EQ(worker_->getConnectionIdMap().size(), 5);
+
+  // Perform the test.
   QuicServerWorker::ServerMigrationSettings settings;
   settings.insert(
       {{connId3, {ServerMigrationProtocol::SYMMETRIC, folly::none}},
@@ -1577,13 +1582,18 @@ TEST_F(QuicServerWorkerTest, TestOnImminentServerMigrationWithoutSpecifiedIds) {
   moveCidToConnectionIdMap(transport5, connId5);
 
   // Create two CID aliases for transport3.
-  worker_->onConnectionIdAvailable(
-      transport3, getTestConnectionId(hostId_ + 100));
-  worker_->onConnectionIdAvailable(
-      transport3, getTestConnectionId(hostId_ + 101));
+  auto alias1 = getTestConnectionId(hostId_ + 100);
+  ASSERT_NE(alias1, connId3);
+  worker_->onConnectionIdAvailable(transport3, alias1);
+  auto alias2 = getTestConnectionId(hostId_ + 101);
+  ASSERT_NE(alias2, connId3);
+  worker_->onConnectionIdAvailable(transport3, alias2);
 
+  // Verify that the starting conditions are the expected ones.
   ASSERT_EQ(worker_->getSrcToTransportMap().size(), 2);
   ASSERT_EQ(worker_->getConnectionIdMap().size(), 5);
+
+  // Perform the test.
   worker_->onImminentServerMigration(
       ServerMigrationProtocol::SYMMETRIC, folly::none);
 
@@ -3317,17 +3327,23 @@ TEST_F(QuicServerTest, TestOnNetworkSwitch) {
   folly::SocketAddress address("127.0.0.1", 1234);
   server_->initialize(address, {&evb}, true);
 
-  // Test attempt to switch to an address of a different family.
-  folly::SocketAddress badNewAddress("::1", 5678);
-  ASSERT_NE(server_->getAddress(), badNewAddress);
-  server_->onNetworkSwitch(badNewAddress);
-  EXPECT_NE(server_->getAddress(), badNewAddress);
-
-  // Test correct switch.
   folly::SocketAddress newAddress("127.1.1.1", 5678);
   ASSERT_NE(server_->getAddress(), newAddress);
   server_->onNetworkSwitch(newAddress);
   EXPECT_EQ(server_->getAddress(), newAddress);
+
+  server_->shutdown();
+}
+
+TEST_F(QuicServerTest, TestOnNetworkSwitchWithWrongAddressFamily) {
+  folly::EventBase evb;
+  folly::SocketAddress address("127.0.0.1", 1234);
+  server_->initialize(address, {&evb}, true);
+
+  folly::SocketAddress badNewAddress("::1", 5678);
+  ASSERT_NE(server_->getAddress(), badNewAddress);
+  server_->onNetworkSwitch(badNewAddress);
+  EXPECT_NE(server_->getAddress(), badNewAddress);
 
   server_->shutdown();
 }

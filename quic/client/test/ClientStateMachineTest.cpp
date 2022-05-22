@@ -157,7 +157,6 @@ TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
 
   QuicServerMigrationNegotiatorClient negotiator(supportedProtocols);
   clientConnection.serverMigrationState.negotiator = std::move(negotiator);
-  ASSERT_TRUE(clientConnection.serverMigrationState.negotiator.has_value());
 
   QuicServerMigrationNegotiatorClient fakePeerNegotiator(supportedProtocols);
   std::vector<TransportParameter> transportParameters;
@@ -166,16 +165,17 @@ TEST_F(ClientStateMachineTest, TestProcessServerMigrationSuite) {
   ServerTransportParameters serverTransportParams = {
       std::move(transportParameters)};
 
-  ASSERT_NO_THROW(
+  EXPECT_NO_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0));
-  ASSERT_TRUE(clientConnection.serverMigrationState.negotiator.value()
-                  .getNegotiatedProtocols()
-                  .has_value());
+  EXPECT_TRUE(
+      clientConnection.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .has_value());
 }
 
 TEST_F(ClientStateMachineTest, TestReceptionOfServerMigrationSuiteWithMigrationDisabled) {
   QuicClientConnectionState clientConnection(
       FizzClientQuicHandshakeContext::Builder().build());
+  ASSERT_TRUE(!clientConnection.serverMigrationState.negotiator);
 
   std::unordered_set<ServerMigrationProtocol> peerSupportedProtocols;
   peerSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
@@ -187,8 +187,7 @@ TEST_F(ClientStateMachineTest, TestReceptionOfServerMigrationSuiteWithMigrationD
   ServerTransportParameters serverTransportParams = {
       std::move(transportParameters)};
 
-  ASSERT_TRUE(!clientConnection.serverMigrationState.negotiator);
-  ASSERT_THROW(
+  EXPECT_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0),
       QuicTransportException);
 }
@@ -196,7 +195,6 @@ TEST_F(ClientStateMachineTest, TestReceptionOfServerMigrationSuiteWithMigrationD
 TEST_F(ClientStateMachineTest, TestNoReceptionOfServerMigrationSuite) {
   QuicClientConnectionState clientConnection(
       FizzClientQuicHandshakeContext::Builder().build());
-
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
 
@@ -207,11 +205,11 @@ TEST_F(ClientStateMachineTest, TestNoReceptionOfServerMigrationSuite) {
   ServerTransportParameters serverTransportParams = {
       std::move(transportParameters)};
 
-  ASSERT_TRUE(clientConnection.serverMigrationState.negotiator.has_value());
-  ASSERT_NO_THROW(
+  EXPECT_NO_THROW(
       processServerInitialParams(clientConnection, serverTransportParams, 0));
-  ASSERT_TRUE(!clientConnection.serverMigrationState.negotiator
-                   ->getNegotiatedProtocols());
+  EXPECT_FALSE(
+      clientConnection.serverMigrationState.negotiator->getNegotiatedProtocols()
+          .has_value());
 }
 
 } // namespace quic::test

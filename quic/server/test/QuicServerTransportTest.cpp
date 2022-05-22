@@ -1733,304 +1733,674 @@ TEST_F(QuicServerTransportTest, ShortHeaderPacketWithNoFramesAfterClose) {
           PacketDropReason::PROTOCOL_VIOLATION));
 }
 
-TEST_F(QuicServerTransportTest, TestAllowServerMigration) {
+TEST_F(QuicServerTransportTest, TestAllowServerMigrationWithProtocolsSpecified) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
-  EXPECT_TRUE(supportedProtocols.empty());
-  EXPECT_FALSE(server->allowServerMigration(supportedProtocols));
-  EXPECT_FALSE(server->getConn().serverMigrationState.negotiator);
-
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+
   EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
-  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
   EXPECT_EQ(
       server->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
+};
 
-  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  EXPECT_TRUE(server->allowServerMigration(supportedProtocols));
-  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+TEST_F(QuicServerTransportTest, TestAllowServerMigrationUpdatingProtocols) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  ASSERT_TRUE(server->allowServerMigration(supportedProtocols));
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_EQ(
+      server->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
+
+  std::unordered_set<ServerMigrationProtocol> updateSupportedProtocols;
+  updateSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  updateSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(server->allowServerMigration(updateSupportedProtocols));
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
   EXPECT_EQ(
+      server->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      updateSupportedProtocols);
+};
+
+TEST_F(QuicServerTransportTest, TestAllowServerMigrationWithNoProtocolsSpecified) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  ASSERT_TRUE(supportedProtocols.empty());
+
+  EXPECT_FALSE(server->allowServerMigration(supportedProtocols));
+  EXPECT_FALSE(server->getConn().serverMigrationState.negotiator);
+};
+
+TEST_F(QuicServerTransportTest, TestAllowServerMigrationDoesNotReplaceSupportedProtocolsWithEmptySet) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  ASSERT_TRUE(server->allowServerMigration(supportedProtocols));
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_EQ(
       server->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
 
   std::unordered_set<ServerMigrationProtocol> emptyProtocols;
   EXPECT_FALSE(server->allowServerMigration(emptyProtocols));
-  EXPECT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
   EXPECT_EQ(
       server->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
-}
+};
 
 TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallback) {
-  EXPECT_FALSE(server->setClientStateUpdateCallback(nullptr));
-  EXPECT_FALSE(
-      server->getConn().serverMigrationState.clientStateUpdateCallback);
-
   auto callback = std::make_shared<MockClientStateUpdateCallback>();
   EXPECT_TRUE(server->setClientStateUpdateCallback(callback));
   EXPECT_TRUE(server->getConn().serverMigrationState.clientStateUpdateCallback);
-}
+  EXPECT_EQ(
+      callback,
+      server->getConn().serverMigrationState.clientStateUpdateCallback);
+};
+
+TEST_F(QuicServerTransportTest, TestSetClientStateUpdateCallbackWithNullptr) {
+  EXPECT_FALSE(server->setClientStateUpdateCallback(nullptr));
+  EXPECT_FALSE(
+      server->getConn().serverMigrationState.clientStateUpdateCallback);
+};
+
+TEST_F(QuicServerTransportTest, TestCannotResetClientStateUpdateCallback) {
+  auto callback = std::make_shared<MockClientStateUpdateCallback>();
+  ASSERT_TRUE(server->setClientStateUpdateCallback(callback));
+  ASSERT_TRUE(server->getConn().serverMigrationState.clientStateUpdateCallback);
+  ASSERT_EQ(
+      callback,
+      server->getConn().serverMigrationState.clientStateUpdateCallback);
+
+  EXPECT_FALSE(server->setClientStateUpdateCallback(nullptr));
+  EXPECT_EQ(
+      callback,
+      server->getConn().serverMigrationState.clientStateUpdateCallback);
+};
 
 TEST_F(QuicServerTransportTest, TestSetServerMigrationEventCallback) {
-  EXPECT_FALSE(server->setServerMigrationEventCallback(nullptr));
-  EXPECT_FALSE(
-      server->getConn().serverMigrationState.serverMigrationEventCallback);
-
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_TRUE(server->setServerMigrationEventCallback(callback));
   EXPECT_TRUE(
       server->getConn().serverMigrationState.serverMigrationEventCallback);
-}
+  EXPECT_EQ(
+      callback,
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+};
+
+TEST_F(QuicServerTransportTest, TestServerMigrationEventCallbackWithNullptr) {
+  EXPECT_FALSE(server->setServerMigrationEventCallback(nullptr));
+  EXPECT_FALSE(
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+};
+
+TEST_F(QuicServerTransportTest, TestCannotResetServerMigrationEventCallback) {
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  ASSERT_TRUE(server->setServerMigrationEventCallback(callback));
+  ASSERT_TRUE(
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+  ASSERT_EQ(
+      callback,
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+
+  EXPECT_FALSE(server->setServerMigrationEventCallback(nullptr));
+  EXPECT_EQ(
+      callback,
+      server->getConn().serverMigrationState.serverMigrationEventCallback);
+};
 
 TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddress) {
-  QuicIPAddress address(folly::IPAddressV4("127.0.0.1"), 5000);
-  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  QuicIPAddress poolAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getSupportedProtocols()
+                  .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  ASSERT_FALSE(poolAddress.isAllZero());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV6(),
+      poolAddress.hasIPv6Field());
+
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(pool);
+  EXPECT_TRUE(server->addPoolMigrationAddress(poolAddress));
+  ASSERT_TRUE(pool.has_value());
+  EXPECT_TRUE(pool->count(poolAddress));
+  EXPECT_FALSE(pool->at(poolAddress));
+}
+
+TEST_F(QuicServerTransportTest, TestAddDuplicatePoolMigrationAddress) {
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  QuicIPAddress poolAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getSupportedProtocols()
+                  .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  ASSERT_FALSE(poolAddress.isAllZero());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV6(),
+      poolAddress.hasIPv6Field());
+
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_TRUE(server->addPoolMigrationAddress(poolAddress));
+  ASSERT_TRUE(pool->count(poolAddress));
+  ASSERT_FALSE(pool->at(poolAddress));
+  ASSERT_EQ(pool->size(), 1);
+
+  // Insert duplicate.
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_TRUE(pool->count(poolAddress));
+  EXPECT_FALSE(pool->at(poolAddress));
+  EXPECT_EQ(pool->size(), 1);
+}
+
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddressWithMigrationDisabled) {
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
+  QuicIPAddress poolAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_FALSE(poolAddress.isAllZero());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV6(),
+      poolAddress.hasIPv6Field());
+
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_FALSE(pool);
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_FALSE(pool);
+}
+
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddressWithPoolOfAddressesNotSupported) {
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
 
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  supportedProtocols.insert(ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   server->allowServerMigration(supportedProtocols);
-  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+  QuicIPAddress poolAddress(folly::IPAddressV4("127.0.0.1"), 5000);
 
-  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  server->allowServerMigration(supportedProtocols);
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_FALSE(poolAddress.isAllZero());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV6(),
+      poolAddress.hasIPv6Field());
 
-  // Due to the initialization performed in the fixture, the server variable
-  // is such that a call to isHandshakeDone() returns true. Then, it is
-  // possible to test that addPoolMigrationAddress() does not accept
-  // new addresses after the handshake completion.
-  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(pool);
+  ASSERT_FALSE(server->getConn()
+                   .serverMigrationState.negotiator->getSupportedProtocols()
+                   .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_FALSE(pool);
+}
 
-  // To test that addPoolMigrationAddress() accepts addresses before the
-  // handshake completion, the state of the handshake layer is reset.
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddressWithAllZeroAddress) {
   initializeServerHandshake();
   server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
   server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
-  EXPECT_TRUE(server->addPoolMigrationAddress(address));
 
-  // Test insertion of a duplicate address.
-  EXPECT_FALSE(server->addPoolMigrationAddress(address));
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  QuicIPAddress poolAddress;
 
-  QuicIPAddress allZeroAddress;
-  EXPECT_FALSE(server->addPoolMigrationAddress(allZeroAddress));
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getSupportedProtocols()
+                  .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
 
-  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
-  QuicIPAddress withoutIPv4Address(folly::IPAddressV6("::1"), 1234);
-  EXPECT_FALSE(server->addPoolMigrationAddress(withoutIPv4Address));
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(pool);
+  ASSERT_TRUE(poolAddress.isAllZero());
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_FALSE(pool);
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationCommonErrors) {
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddressWithAddressFamilyNotMatching) {
+  initializeServerHandshake();
+  server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
+  server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
+
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  QuicIPAddress poolAddress(folly::IPAddressV6("::1"), 1234);
+
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getSupportedProtocols()
+                  .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  ASSERT_FALSE(poolAddress.isAllZero());
+
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(pool);
+  ASSERT_NE(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_FALSE(pool);
+}
+
+TEST_F(QuicServerTransportTest, TestAddPoolMigrationAddressWhenHandshakeIsDone) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  server->allowServerMigration(supportedProtocols);
+  QuicIPAddress poolAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getSupportedProtocols()
+                  .count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  ASSERT_FALSE(poolAddress.isAllZero());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV4(),
+      poolAddress.hasIPv4Field());
+  ASSERT_EQ(
+      server->getSocket().address().getIPAddress().isV6(),
+      poolAddress.hasIPv6Field());
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  auto& pool =
+      server->getConn().serverMigrationState.pendingPoolMigrationAddresses;
+  ASSERT_FALSE(pool);
+  EXPECT_FALSE(server->addPoolMigrationAddress(poolAddress));
+  EXPECT_FALSE(pool);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationDuringHandshake) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  serverSupportedProtocols.insert(migrationProtocol);
+  auto clientSupportedProtocols = serverSupportedProtocols;
+
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(6))
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::PROTOCOL_NOT_NEGOTIATED);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::MIGRATION_ALREADY_IN_PROGRESS);
-      })
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::HANDSHAKE_NOT_FINISHED);
       });
-  server->setServerMigrationEventCallback(callback);
-  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
-  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
 
-  // Test with migration disabled.
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Enable server migration for the next tests.
-  server->allowServerMigration(supportedProtocols);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with no migration negotiation performed
-  // (simulates client not supporting server migration).
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with unsuccessful negotiation (empty negotiated protocols).
-  doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      supportedProtocols);
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with protocol not in negotiated ones.
-  doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYMMETRIC}),
-      supportedProtocols);
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with migration in progress (note that Symmetric has been negotiated).
-  server->getNonConstConn().serverMigrationState.migrationInProgress = true;
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with handshake not finished.
   initializeServerHandshake();
   server->getNonConstConn().handshakeLayer.reset(fakeHandshake);
   server->getNonConstConn().serverHandshakeLayer = fakeHandshake;
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      clientSupportedProtocols, serverSupportedProtocols);
+
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_FALSE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationWithMigrationDisabled) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(3))
+      .WillRepeatedly([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_DISABLED);
+      });
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_FALSE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+
+  // Test without enabling the server migration support.
+  server->setServerMigrationEventCallback(callback);
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+
+  // Test with no negotiation.
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  serverSupportedProtocols.insert(migrationProtocol);
+  server->allowServerMigration(serverSupportedProtocols);
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_FALSE(server->getConn()
+                   .serverMigrationState.negotiator->getNegotiatedProtocols());
+  server->setServerMigrationEventCallback(callback);
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+
+  // Test with unsuccessful negotiation.
+  std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  doServerMigrationProtocolNegotiation(
+      clientSupportedProtocols, serverSupportedProtocols);
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->empty());
+  server->setServerMigrationEventCallback(callback);
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationWithProtocolNotNegotiated) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  serverSupportedProtocols.insert(migrationProtocol);
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  std::unordered_set<ServerMigrationProtocol> clientSupportedProtocols;
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::PROTOCOL_NOT_NEGOTIATED);
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      clientSupportedProtocols, serverSupportedProtocols);
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_FALSE(server->getConn()
+                   .serverMigrationState.negotiator->getNegotiatedProtocols()
+                   ->empty());
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+
+  ASSERT_FALSE(server->getConn()
+                   .serverMigrationState.negotiator->getNegotiatedProtocols()
+                   ->count(migrationProtocol));
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationWithMigrationInProgress) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  std::unordered_set<ServerMigrationProtocol> serverSupportedProtocols;
+  serverSupportedProtocols.insert(migrationProtocol);
+  auto clientSupportedProtocols = serverSupportedProtocols;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::MIGRATION_ALREADY_IN_PROGRESS);
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      clientSupportedProtocols, serverSupportedProtocols);
+  server->getNonConstConn().serverMigrationState.migrationInProgress = true;
+
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_TRUE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitNoMigrationAddress) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
       });
+
   server->setServerMigrationEventCallback(callback);
-
-  // Simulate successful negotiation.
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT, folly::none);
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitAddressFamilyMismatch) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
       });
+
   server->setServerMigrationEventCallback(callback);
-
-  // Simulate successful negotiation.
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+
+  QuicIPAddress migrationAddress(folly::IPAddressV6("::1"), 5000);
   ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT,
-      QuicIPAddress(folly::IPAddressV6("::1"), 5000));
+  server->onImminentServerMigration(migrationProtocol, migrationAddress);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitSameAddressAsBefore) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
       });
-  server->setServerMigrationEventCallback(callback);
 
-  // Simulate successful negotiation.
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
 
   auto currentAddress = server->getSocket().address();
-  ASSERT_EQ(currentAddress, server->getSocket().address());
   server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT, QuicIPAddress(currentAddress));
+      migrationProtocol, QuicIPAddress(currentAddress));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateSameProtocol) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateOfTheSameProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
+
   server->setServerMigrationEventCallback(callback);
-
-  // Simulate successful negotiation.
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
+
   server->getNonConstConn().serverMigrationState.protocolState =
-      ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5001));
+      ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
   server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT,
-      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+      migrationProtocol, QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateDifferentProtocol) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicitInvalidStateOfADifferentProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
       .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
+
   server->setServerMigrationEventCallback(callback);
-
-  // Simulate successful negotiation.
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
+
   server->getNonConstConn().serverMigrationState.protocolState =
       SymmetricServerState();
   server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT,
-      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+      migrationProtocol, QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicit) {
+  auto migrationProtocol = ServerMigrationProtocol::EXPLICIT;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed).Times(0);
-  server->setServerMigrationEventCallback(callback);
 
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::EXPLICIT}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getSocket().address().getIPAddress().isV4());
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
 
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
-  ASSERT_FALSE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
-
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::EXPLICIT, migrationAddress);
+  server->onImminentServerMigration(migrationProtocol, migrationAddress);
 
   EXPECT_TRUE(
       server->getNonConstConn().serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
   ASSERT_EQ(
-      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      server->getConn().serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolServerState::Type::ExplicitServerState);
 
   auto protocolState =
@@ -2039,72 +2409,164 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationExplicit) {
   EXPECT_EQ(protocolState->migrationAddress, migrationAddress);
   EXPECT_FALSE(protocolState->migrationAcknowledged);
 
-  ASSERT_FALSE(server->getNonConstConn().pendingEvents.frames.empty());
+  ASSERT_FALSE(server->getConn().pendingEvents.frames.empty());
   EXPECT_EQ(
-      *server->getNonConstConn()
+      *server->getConn()
            .pendingEvents.frames.at(0)
            .asQuicServerMigrationFrame()
            ->asServerMigrationFrame(),
       ServerMigrationFrame(migrationAddress));
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesErrors) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesWithMigrationAddress) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
   EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(5))
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  auto protocolState = PoolOfAddressesServerState();
+  protocolState.migrationAddresses.emplace(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000), false);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      std::move(protocolState);
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      migrationProtocol, QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5000));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesWithNoProtocolState) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesWithWrongProtocolState) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesWithEmptyAddressPool) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::EMPTY_POOL_MIGRATION_ADDRESSES);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+  server->getNonConstConn().serverMigrationState.protocolState =
+      PoolOfAddressesServerState();
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesWithNotAcknowledgedAddressPool) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(
             error,
             ServerMigrationError::POOL_MIGRATION_ADDRESSES_NOT_ACKNOWLEDGED);
       });
-  server->setServerMigrationEventCallback(callback);
 
-  // Simulate successful negotiation.
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::POOL_OF_ADDRESSES}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::POOL_OF_ADDRESSES}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  // Test with migration address passed as parameter.
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES,
-      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with no protocol state present.
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with protocol state different from the expected one.
-  server->getNonConstConn().serverMigrationState.protocolState =
-      SymmetricServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with correct protocol state, but empty address pool.
-  server->getNonConstConn().serverMigrationState.protocolState =
-      PoolOfAddressesServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
-  server->setServerMigrationEventCallback(callback);
-
-  // Test with migration pool not entirely acknowledged.
   auto protocolState = PoolOfAddressesServerState();
   protocolState.migrationAddresses.emplace(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000), false);
@@ -2115,21 +2577,32 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddressesErro
   protocolState.numberOfReceivedAcks = 1;
   server->getNonConstConn().serverMigrationState.protocolState =
       std::move(protocolState);
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddresses) {
+  auto migrationProtocol = ServerMigrationProtocol::POOL_OF_ADDRESSES;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed).Times(0);
   EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
-  server->setServerMigrationEventCallback(callback);
 
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::POOL_OF_ADDRESSES}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::POOL_OF_ADDRESSES}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
   auto protocolState = PoolOfAddressesServerState();
   protocolState.migrationAddresses.emplace(
@@ -2141,208 +2614,334 @@ TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationPoolOfAddresses) {
   protocolState.numberOfReceivedAcks = 3;
   server->getNonConstConn().serverMigrationState.protocolState = protocolState;
 
-  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
-  ASSERT_FALSE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
 
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::POOL_OF_ADDRESSES, folly::none);
-
-  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
   ASSERT_EQ(
-      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      server->getConn().serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState);
   EXPECT_EQ(
-      *server->getNonConstConn()
+      *server->getConn()
            .serverMigrationState.protocolState->asPoolOfAddressesServerState(),
       protocolState);
-  EXPECT_TRUE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
-  EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(server->getConn().serverMigrationState.migrationInProgress);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetricErrors) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetricWithMigrationAddress) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
   EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(3))
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      migrationProtocol, QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5000));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetricInvalidStateOfTheSameProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
-  server->setServerMigrationEventCallback(callback);
 
-  // Simulate successful negotiation.
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYMMETRIC}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYMMETRIC}));
-
-  // Test with migration address passed as parameter.
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC,
-      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  server->setServerMigrationEventCallback(callback);
-
-  // Test invalid state (same protocol and different protocol).
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
   server->getNonConstConn().serverMigrationState.protocolState =
       SymmetricServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
 
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetricInvalidStateOfADifferentProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
   server->getNonConstConn().serverMigrationState.protocolState =
       PoolOfAddressesServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSymmetric) {
+  auto migrationProtocol = ServerMigrationProtocol::SYMMETRIC;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed).Times(0);
   EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
+
   server->setServerMigrationEventCallback(callback);
-
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYMMETRIC}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYMMETRIC}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
-  ASSERT_FALSE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
 
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYMMETRIC, folly::none);
-
-  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
-  ASSERT_EQ(
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
+  EXPECT_EQ(
       server->getNonConstConn().serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
-  EXPECT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
-  EXPECT_TRUE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
-TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetricErrors) {
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetricWithMigrationAddress) {
+  auto migrationProtocol = ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
   EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(3))
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      })
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(
+      migrationProtocol, QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5000));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetricInvalidStateOfTheSameProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
-  server->setServerMigrationEventCallback(callback);
 
-  // Simulate successful negotiation.
+  server->setServerMigrationEventCallback(callback);
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC}));
-
-  // Test with migration address passed as parameter.
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC,
-      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  server->setServerMigrationEventCallback(callback);
-
-  // Test invalid state (same protocol and different protocol).
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
   server->getNonConstConn().serverMigrationState.protocolState =
       SynchronizedSymmetricServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC, folly::none);
-  server->setServerMigrationEventCallback(callback);
 
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetricInvalidStateOfADifferentProtocol) {
+  auto migrationProtocol = ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC;
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  doServerMigrationProtocolNegotiation(
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
   server->getNonConstConn().serverMigrationState.protocolState =
       PoolOfAddressesServerState();
-  server->onImminentServerMigration(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC, folly::none);
+
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
+
+  server->onImminentServerMigration(migrationProtocol, folly::none);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+  EXPECT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
 TEST_F(QuicServerTransportTest, TestOnImminentServerMigrationSynchronizedSymmetric) {
+  auto migrationProtocol = ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC;
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed).Times(0);
+
   server->setServerMigrationEventCallback(callback);
-
   doServerMigrationProtocolNegotiation(
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC}),
-      std::unordered_set<ServerMigrationProtocol>(
-          {ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC}));
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}),
+      std::unordered_set<ServerMigrationProtocol>({migrationProtocol}));
 
-  ASSERT_TRUE(!server->getNonConstConn().serverMigrationState.protocolState);
-  ASSERT_FALSE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(server->getNonConstConn().pendingEvents.frames.empty());
+  ASSERT_TRUE(server->getConn().serverHandshakeLayer->isHandshakeDone());
+  ASSERT_TRUE(server->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols());
+  ASSERT_TRUE(server->getConn()
+                  .serverMigrationState.negotiator->getNegotiatedProtocols()
+                  ->count(migrationProtocol));
+  ASSERT_FALSE(server->getConn().serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().pendingEvents.frames.empty());
 
   server->onImminentServerMigration(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC, folly::none);
 
-  ASSERT_TRUE(server->getNonConstConn().serverMigrationState.protocolState);
+  ASSERT_TRUE(server->getConn().serverMigrationState.protocolState);
   ASSERT_EQ(
-      server->getNonConstConn().serverMigrationState.protocolState->type(),
+      server->getConn().serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolServerState::Type::
           SynchronizedSymmetricServerState);
-  EXPECT_FALSE(server->getNonConstConn()
+  EXPECT_FALSE(server->getConn()
                    .serverMigrationState.protocolState
                    ->asSynchronizedSymmetricServerState()
                    ->migrationAcknowledged);
-  ASSERT_FALSE(server->getNonConstConn().pendingEvents.frames.empty());
+  ASSERT_FALSE(server->getConn().pendingEvents.frames.empty());
   EXPECT_EQ(
-      *server->getNonConstConn()
+      *server->getConn()
            .pendingEvents.frames.at(0)
            .asQuicServerMigrationFrame()
            ->asServerMigrationFrame(),
       ServerMigrationFrame(QuicIPAddress()));
-  EXPECT_TRUE(
-      server->getNonConstConn().serverMigrationState.migrationInProgress);
+  EXPECT_TRUE(server->getConn().serverMigrationState.migrationInProgress);
 }
 
-TEST_F(QuicServerTransportTest, TestOnNetworkSwitchErrors) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithNullSocket) {
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationFailed)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationError error) {
+        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
+      });
+
+  server->setServerMigrationEventCallback(callback);
+  server->getNonConstConn().serverMigrationState.protocolState =
+      SymmetricServerState();
+
+  server->onNetworkSwitch(nullptr);
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
+}
+
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithoutProtocolState) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
-  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
-  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
+  ASSERT_NE(newAddress, server->getSocket().address());
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(2))
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_ADDRESS);
-      })
+      .Times(Exactly(1))
       .WillOnce([&](Unused, ServerMigrationError error) {
         EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
       });
-  server->setServerMigrationEventCallback(callback);
 
-  // Test with a null socket.
-  server->getNonConstConn().serverMigrationState.protocolState =
-      SymmetricServerState();
-  server->onNetworkSwitch(nullptr);
-  server->getNonConstConn().serverMigrationState.protocolState.clear();
   server->setServerMigrationEventCallback(callback);
+  ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
 
-  // Test without a protocol state.
-  ASSERT_FALSE(server->getConn().serverMigrationState.protocolState);
+  auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
+  newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
   server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerTransportTest, TestExplicitProtocolOnNetworkSwitch) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchExplicitProtocol) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
@@ -2362,7 +2961,7 @@ TEST_F(QuicServerTransportTest, TestExplicitProtocolOnNetworkSwitch) {
   EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerTransportTest, TestPoolOfAddressesProtocolOnNetworkSwitch) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchPoolOfAddressesProtocol) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
@@ -2382,7 +2981,7 @@ TEST_F(QuicServerTransportTest, TestPoolOfAddressesProtocolOnNetworkSwitch) {
   EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerTransportTest, TestSymmetricProtocolOnNetworkSwitch) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchSymmetricProtocol) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
@@ -2408,7 +3007,7 @@ TEST_F(QuicServerTransportTest, TestSymmetricProtocolOnNetworkSwitch) {
       ServerMigratedFrame());
 }
 
-TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolOnNetworkSwitch) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchSynchronizedSymmetricProtocol) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
@@ -2435,7 +3034,7 @@ TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolOnNetworkSwitch
       ServerMigratedFrame());
 }
 
-TEST_F(QuicServerTransportTest, TestSynchronizedSymmetricProtocolWithoutServerMigratedOnNetworkSwitch) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchSynchronizedSymmetricProtocolWithoutServerMigrated) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());

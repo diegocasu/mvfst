@@ -232,18 +232,16 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteEncoding) {
 
   EXPECT_EQ(extensions.size(), 1);
   auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
-  EXPECT_TRUE(serverParams.has_value());
+  ASSERT_TRUE(serverParams.has_value());
 
-  EXPECT_NO_THROW(getIntegerParameter(
+  ASSERT_NO_THROW(getIntegerParameter(
       TransportParameterId::server_migration_suite,
       serverParams.value().parameters));
-
   auto decodedMigrationSuite = getIntegerParameter(
       TransportParameterId::server_migration_suite,
       serverParams.value().parameters);
-
-  EXPECT_TRUE(decodedMigrationSuite.hasValue());
-  EXPECT_TRUE(decodedMigrationSuite.value() == migrationSuiteValue);
+  ASSERT_TRUE(decodedMigrationSuite.hasValue());
+  EXPECT_EQ(decodedMigrationSuite.value(), migrationSuiteValue);
 }
 
 TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
@@ -283,10 +281,9 @@ TEST(ServerTransportParametersTest, TestServerMigrationSuiteProcessing) {
 
   auto extensions = extension.getExtensions(clientHello);
   ASSERT_TRUE(negotiator->getNegotiatedProtocols().has_value());
-  EXPECT_TRUE(
-      negotiator->getNegotiatedProtocols().value().size() == 1 &&
-      negotiator->getNegotiatedProtocols().value().count(
-          ServerMigrationProtocol::EXPLICIT));
+  EXPECT_EQ(negotiator->getNegotiatedProtocols()->size(), 1);
+  EXPECT_TRUE(negotiator->getNegotiatedProtocols()->count(
+      ServerMigrationProtocol::EXPLICIT));
 
   auto serverParams = getServerExtension(extensions, QuicVersion::MVFST);
   ASSERT_TRUE(serverParams.has_value());

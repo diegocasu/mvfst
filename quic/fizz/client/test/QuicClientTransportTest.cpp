@@ -985,34 +985,73 @@ TEST_F(QuicClientTransportTest, CustomTransportParam) {
   client->closeNow(folly::none);
 }
 
-TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
+TEST_F(QuicClientTransportTest, TestAllowServerMigrationWithProtocolsSpecified) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
-  EXPECT_TRUE(supportedProtocols.empty());
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  supportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+
+  EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
+  ASSERT_TRUE(client->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
+
+
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestAllowServerMigrationUpdatingProtocols) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  ASSERT_TRUE(client->allowServerMigration(supportedProtocols));
+  ASSERT_TRUE(client->getConn().serverMigrationState.negotiator);
+  ASSERT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      supportedProtocols);
+
+  std::unordered_set<ServerMigrationProtocol> updateSupportedProtocols;
+  updateSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  updateSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  EXPECT_TRUE(client->allowServerMigration(updateSupportedProtocols));
+  ASSERT_TRUE(client->getConn().serverMigrationState.negotiator);
+  EXPECT_EQ(
+      client->getConn()
+          .serverMigrationState.negotiator->getSupportedProtocols(),
+      updateSupportedProtocols);
+  EXPECT_TRUE(client->getConn().probeTimeoutCallback);
+
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestAllowServerMigrationWithNoProtocolsSpecified) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  ASSERT_TRUE(supportedProtocols.empty());
+
   EXPECT_FALSE(client->allowServerMigration(supportedProtocols));
   EXPECT_FALSE(client->getConn().serverMigrationState.negotiator);
   EXPECT_FALSE(client->getConn().probeTimeoutCallback);
 
-  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
-  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
-  EXPECT_EQ(
-      client->getConn()
-          .serverMigrationState.negotiator->getSupportedProtocols(),
-      supportedProtocols);
-  EXPECT_TRUE(client->getConn().probeTimeoutCallback);
+  client->closeNow(folly::none);
+}
 
-  supportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  EXPECT_TRUE(client->allowServerMigration(supportedProtocols));
-  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
-  EXPECT_EQ(
+TEST_F(QuicClientTransportTest, TestAllowServerMigrationDoesNotReplaceSupportedProtocolsWithEmptySet) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+
+  ASSERT_TRUE(client->allowServerMigration(supportedProtocols));
+  ASSERT_TRUE(client->getConn().serverMigrationState.negotiator);
+  ASSERT_EQ(
       client->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
       supportedProtocols);
-  EXPECT_TRUE(client->getConn().probeTimeoutCallback);
+  ASSERT_TRUE(client->getConn().probeTimeoutCallback);
 
   std::unordered_set<ServerMigrationProtocol> emptyProtocols;
   EXPECT_FALSE(client->allowServerMigration(emptyProtocols));
-  EXPECT_TRUE(client->getConn().serverMigrationState.negotiator);
+  ASSERT_TRUE(client->getConn().serverMigrationState.negotiator);
   EXPECT_EQ(
       client->getConn()
           .serverMigrationState.negotiator->getSupportedProtocols(),
@@ -1023,26 +1062,64 @@ TEST_F(QuicClientTransportTest, TestAllowServerMigration) {
 }
 
 TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallback) {
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_TRUE(client->setServerMigrationEventCallback(callback));
+  EXPECT_TRUE(
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+  EXPECT_EQ(
+      callback,
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestSetServerMigrationEventCallbackWithNullptr) {
   EXPECT_FALSE(client->setServerMigrationEventCallback(nullptr));
   EXPECT_FALSE(
       client->getConn().serverMigrationState.serverMigrationEventCallback);
+  client->closeNow(folly::none);
+}
 
-  auto callback = std::make_shared<MockServerMigrationEventCallback>() ;
-  EXPECT_TRUE(client->setServerMigrationEventCallback(callback));
-  EXPECT_TRUE(
+TEST_F(QuicClientTransportTest, TestCannotResetServerMigrationEventCallback) {
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  ASSERT_TRUE(client->setServerMigrationEventCallback(callback));
+  ASSERT_TRUE(
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+  ASSERT_EQ(
+      callback,
+      client->getConn().serverMigrationState.serverMigrationEventCallback);
+
+  EXPECT_FALSE(client->setServerMigrationEventCallback(nullptr));
+  EXPECT_EQ(
+      callback,
       client->getConn().serverMigrationState.serverMigrationEventCallback);
 
   client->closeNow(folly::none);
 }
 
 TEST_F(QuicClientTransportTest, TestSetPoolMigrationAddressSchedulerFactory) {
-  EXPECT_FALSE(client->setPoolMigrationAddressSchedulerFactory(nullptr));
-  EXPECT_FALSE(client->getConn()
-                   .serverMigrationState.poolMigrationAddressSchedulerFactory);
-
   auto factory = std::make_unique<MockPoolMigrationAddressSchedulerFactory>();
   EXPECT_TRUE(
       client->setPoolMigrationAddressSchedulerFactory(std::move(factory)));
+  EXPECT_TRUE(client->getConn()
+                  .serverMigrationState.poolMigrationAddressSchedulerFactory);
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestSetPoolMigrationAddressSchedulerFactoryWithNullptr) {
+  EXPECT_FALSE(client->setPoolMigrationAddressSchedulerFactory(nullptr));
+  EXPECT_FALSE(client->getConn()
+                   .serverMigrationState.poolMigrationAddressSchedulerFactory);
+  client->closeNow(folly::none);
+}
+
+TEST_F(QuicClientTransportTest, TestCannotResetPoolMigrationAddressSchedulerFactory) {
+  auto factory = std::make_unique<MockPoolMigrationAddressSchedulerFactory>();
+  ASSERT_TRUE(
+      client->setPoolMigrationAddressSchedulerFactory(std::move(factory)));
+  ASSERT_TRUE(client->getConn()
+                  .serverMigrationState.poolMigrationAddressSchedulerFactory);
+
+  EXPECT_FALSE(client->setPoolMigrationAddressSchedulerFactory(nullptr));
   EXPECT_TRUE(client->getConn()
                   .serverMigrationState.poolMigrationAddressSchedulerFactory);
 

@@ -291,6 +291,5 @@ TEST_F(PacketHeaderTest, ShortHeader) {
 
   EXPECT_EQ(readHeader.asShort()->getConnectionId(), connid);
 }
-
 } // namespace test
 } // namespace quic
