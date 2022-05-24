@@ -7,65 +7,72 @@ namespace test {
 TEST(QuicServerMigrationNegotiatorServerTest, TestEmptySupportedProtocols) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   ASSERT_TRUE(supportedProtocols.empty());
-
-  ASSERT_THROW(
+  EXPECT_THROW(
       QuicServerMigrationNegotiatorServer negotiator(supportedProtocols),
       QuicInternalException);
 }
 
-TEST(QuicServerMigrationNegotiatorServerTest, TestWrongParametersPassedOrReceived) {
+TEST(QuicServerMigrationNegotiatorServerTest, TestReceptionOfWrongParameter) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
 
   CustomIntegralTransportParameter wrongParameter(
       static_cast<uint64_t>(TransportParameterId::disable_migration), 0xFF);
-
-  ASSERT_THROW(
+  EXPECT_THROW(
       negotiator.onMigrationSuiteReceived(wrongParameter.encode()),
       QuicTransportException);
-  ASSERT_TRUE(!negotiator.getNegotiatedProtocols());
+  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
+}
+
+TEST(QuicServerMigrationNegotiatorServerTest, TestReceptionOfWronglyEncodedParameter) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
 
   CustomStringTransportParameter wronglyEncodedParameter(
       static_cast<uint64_t>(TransportParameterId::server_migration_suite), "");
-
   // Check that the raw data in wronglyEncodedParameter
-  // is not accidentally a quic integer.
+  // is not accidentally a Quic integer.
   auto wronglyEncodedRaw = wronglyEncodedParameter.encode();
   auto cursor = folly::io::Cursor(wronglyEncodedRaw.value.get());
   auto quicInteger = decodeQuicInteger(cursor);
   ASSERT_TRUE(!quicInteger);
 
-  ASSERT_THROW(
+  EXPECT_THROW(
       negotiator.onMigrationSuiteReceived(wronglyEncodedParameter.encode()),
       QuicTransportException);
-  ASSERT_TRUE(!negotiator.getNegotiatedProtocols());
+  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
+}
+
+TEST(QuicServerMigrationNegotiatorServerTest, TestReceptionOfNoProtocolsInEncodedParameter) {
+  std::unordered_set<ServerMigrationProtocol> supportedProtocols;
+  supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
 
   CustomIntegralTransportParameter noProtocolsEncodedParameter(
       static_cast<uint64_t>(TransportParameterId::server_migration_suite), 0);
 
-  ASSERT_THROW(
+  EXPECT_THROW(
       negotiator.onMigrationSuiteReceived(noProtocolsEncodedParameter.encode()),
       QuicTransportException);
-  ASSERT_TRUE(!negotiator.getNegotiatedProtocols());
+  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
 }
 
 TEST(QuicServerMigrationNegotiatorServerTest, TestEncodingBeforeSuiteReceived) {
   std::unordered_set<ServerMigrationProtocol> supportedProtocols;
   supportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   QuicServerMigrationNegotiatorServer negotiator(supportedProtocols);
-
-  ASSERT_THROW(
+  EXPECT_THROW(
       negotiator.onTransportParametersEncoding(), QuicTransportException);
-  ASSERT_TRUE(!negotiator.getNegotiatedProtocols());
+  EXPECT_TRUE(!negotiator.getNegotiatedProtocols());
 
   CustomIntegralTransportParameter peerParameter(
       static_cast<uint64_t>(TransportParameterId::server_migration_suite),
       static_cast<uint64_t>(ServerMigrationProtocol::SYMMETRIC));
-
-  ASSERT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
-  ASSERT_TRUE(negotiator.getNegotiatedProtocols().has_value());
-  ASSERT_NO_THROW(negotiator.onTransportParametersEncoding());
+  EXPECT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
+  EXPECT_TRUE(negotiator.getNegotiatedProtocols().has_value());
+  EXPECT_NO_THROW(negotiator.onTransportParametersEncoding());
 }
 
 TEST(QuicServerMigrationNegotiatorServerTest, TestTransportParameterEncoding) {
@@ -84,11 +91,9 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestTransportParameterEncoding) {
           static_cast<uint64_t>(ServerMigrationProtocol::POOL_OF_ADDRESSES) |
           static_cast<uint64_t>(ServerMigrationProtocol::SYMMETRIC));
 
-  ASSERT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
-
-  EXPECT_TRUE(
-      negotiator.getNegotiatedProtocols().has_value() &&
-      negotiator.getNegotiatedProtocols()->size() == 3);
+  EXPECT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
+  ASSERT_TRUE(negotiator.getNegotiatedProtocols().has_value());
+  EXPECT_EQ(negotiator.getNegotiatedProtocols()->size(), 3);
 
   ASSERT_NO_THROW(negotiator.onTransportParametersEncoding());
   auto encodedParameter = negotiator.onTransportParametersEncoding();
@@ -96,8 +101,8 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestTransportParameterEncoding) {
   auto cursor = folly::io::Cursor(encodedParameter.value.get());
   auto decodedValue = decodeQuicInteger(cursor).value().first;
 
-  EXPECT_TRUE(encodedParameter.parameter == expectedParameterId);
-  EXPECT_TRUE(decodedValue == expectedParameterValue);
+  EXPECT_EQ(encodedParameter.parameter, expectedParameterId);
+  EXPECT_EQ(decodedValue, expectedParameterValue);
 }
 
 TEST(QuicServerMigrationNegotiatorServerTest, TestSuccessfulNegotiationWithSingleProtocol) {
@@ -111,15 +116,13 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestSuccessfulNegotiationWithSingl
       static_cast<uint64_t>(TransportParameterId::server_migration_suite),
       static_cast<uint64_t>(ServerMigrationProtocol::SYMMETRIC));
 
-  ASSERT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
+  EXPECT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
   auto negotiatedProtocols = negotiator.getNegotiatedProtocols();
   ASSERT_TRUE(negotiatedProtocols.hasValue());
+  EXPECT_EQ(negotiatedProtocols->size(), 1);
+  EXPECT_TRUE(negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
 
-  ASSERT_TRUE(
-      negotiatedProtocols->size() == 1 &&
-      negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
-
-  ASSERT_NO_THROW(negotiator.onTransportParametersEncoding());
+  EXPECT_NO_THROW(negotiator.onTransportParametersEncoding());
 }
 
 TEST(QuicServerMigrationNegotiatorServerTest, TestSuccessfulNegotiationWithMultipleProtocols) {
@@ -134,16 +137,15 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestSuccessfulNegotiationWithMulti
       static_cast<uint64_t>(ServerMigrationProtocol::POOL_OF_ADDRESSES) |
           static_cast<uint64_t>(ServerMigrationProtocol::SYMMETRIC));
 
-  ASSERT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
+  EXPECT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
   auto negotiatedProtocols = negotiator.getNegotiatedProtocols();
   ASSERT_TRUE(negotiatedProtocols.hasValue());
+  EXPECT_EQ(negotiatedProtocols->size(), 2);
+  EXPECT_TRUE(
+      negotiatedProtocols->count(ServerMigrationProtocol::POOL_OF_ADDRESSES));
+  EXPECT_TRUE(negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
 
-  ASSERT_TRUE(
-      negotiatedProtocols->size() == 2 &&
-      negotiatedProtocols->count(ServerMigrationProtocol::POOL_OF_ADDRESSES) &&
-      negotiatedProtocols->count(ServerMigrationProtocol::SYMMETRIC));
-
-  ASSERT_NO_THROW(negotiator.onTransportParametersEncoding());
+  EXPECT_NO_THROW(negotiator.onTransportParametersEncoding());
 }
 
 TEST(QuicServerMigrationNegotiatorServerTest, TestUnsuccessfulNegotiation) {
@@ -155,10 +157,10 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestUnsuccessfulNegotiation) {
       static_cast<uint64_t>(TransportParameterId::server_migration_suite),
       static_cast<uint64_t>(ServerMigrationProtocol::POOL_OF_ADDRESSES));
 
-  ASSERT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
+  EXPECT_NO_THROW(negotiator.onMigrationSuiteReceived(peerParameter.encode()));
   auto negotiatedProtocols = negotiator.getNegotiatedProtocols();
   ASSERT_TRUE(negotiatedProtocols.hasValue());
-  ASSERT_TRUE(negotiatedProtocols->empty());
+  EXPECT_TRUE(negotiatedProtocols->empty());
 
   ASSERT_NO_THROW(negotiator.onTransportParametersEncoding());
   auto encodedParameter = negotiator.onTransportParametersEncoding();
@@ -169,8 +171,8 @@ TEST(QuicServerMigrationNegotiatorServerTest, TestUnsuccessfulNegotiation) {
   auto expectedParameterId = TransportParameterId::server_migration_suite;
   uint64_t expectedParameterValue = 0;
 
-  EXPECT_TRUE(encodedParameter.parameter == expectedParameterId);
-  EXPECT_TRUE(decodedValue == expectedParameterValue);
+  EXPECT_EQ(encodedParameter.parameter, expectedParameterId);
+  EXPECT_EQ(decodedValue, expectedParameterValue);
 }
 
 } // namespace test

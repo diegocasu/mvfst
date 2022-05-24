@@ -54,6 +54,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestSetServerAddressWithAllZero
   scheduler.setCurrentServerAddress(serverAddress);
   ASSERT_EQ(scheduler.getCurrentServerAddress(), serverAddress);
   ASSERT_EQ(scheduler.pendingServerAddress(), serverAddress);
+
   QuicIPAddress emptyAddress;
   ASSERT_TRUE(emptyAddress.isAllZero());
   scheduler.setCurrentServerAddress(emptyAddress);
@@ -75,6 +76,7 @@ TEST_F(DefaultPoolMigrationAddressSchedulerTest, TestInsertSocketAddresses) {
   QuicIPAddress addressV4(folly::IPAddressV4("5.6.7.8"), 5678);
   QuicIPAddress addressV6(folly::IPAddressV6("::2"), 2222);
   ASSERT_TRUE(scheduler.socketAddresses().empty());
+
   scheduler.insert(addressWithBothVersions);
   scheduler.insert(addressV4);
   scheduler.insert(addressV6);
