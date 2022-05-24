@@ -710,7 +710,7 @@ void maybeUpdatePoolOfAddressesServerMigrationProbing(
         .emplace_back(std::move(congestionRttState));
     protocolState->serverAddressBeforeProbing = connectionState.peerAddress;
     protocolState->addressScheduler->setCurrentServerAddress(
-        QuicIPAddress(connectionState.peerAddress));
+        quic::QuicIPAddress(connectionState.peerAddress));
     protocolState->probingInProgress = true;
   }
 
@@ -745,7 +745,8 @@ void maybeEndPoolOfAddressesServerMigrationProbing(
     protocolState->probingInProgress = false;
     protocolState->probingFinished = false;
     protocolState->addressScheduler->restart();
-    protocolState->addressScheduler->setCurrentServerAddress(QuicIPAddress());
+    protocolState->addressScheduler->setCurrentServerAddress(
+        quic::QuicIPAddress());
     restoreCongestionAndRttState(
         connectionState,
         std::move(connectionState.serverMigrationState
@@ -770,7 +771,8 @@ void maybeEndPoolOfAddressesServerMigrationProbing(
     protocolState->probingInProgress = false;
     protocolState->probingFinished = true;
     protocolState->addressScheduler->restart();
-    protocolState->addressScheduler->setCurrentServerAddress(QuicIPAddress());
+    protocolState->addressScheduler->setCurrentServerAddress(
+        quic::QuicIPAddress());
 
     // Start path validation. The retransmission of PATH_CHALLENGE frames
     // is done automatically when a packet is marked as lost.

@@ -3,6 +3,8 @@
 #include <folly/SocketAddress.h>
 #include <glog/logging.h>
 
+namespace quic {
+
 struct QuicIPAddress {
   folly::IPAddressV4 ipv4Address{"0.0.0.0"};
   uint16_t ipv4Port{0};
@@ -86,3 +88,5 @@ struct QuicIPAddress {
 struct QuicIPAddressHash {
   size_t operator()(const QuicIPAddress& quicIpAddress) const;
 };
+
+} // namespace quic

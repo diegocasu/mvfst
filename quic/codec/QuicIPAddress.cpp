@@ -1,5 +1,7 @@
 #include "QuicIPAddress.h"
 
+namespace quic {
+
 QuicIPAddress::QuicIPAddress(const folly::SocketAddress& address) {
   if (address.getIPAddress().isV4()) {
     ipv4Address = address.getIPAddress().asV4();
@@ -109,3 +111,5 @@ size_t QuicIPAddressHash::operator()(const QuicIPAddress& quicIpAddress) const {
       folly::hash::fnv32_buf(
           &quicIpAddress.ipv6Port, sizeof(quicIpAddress.ipv6Port)));
 }
+
+} // namespace quic
