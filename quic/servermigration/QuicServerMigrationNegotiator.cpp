@@ -22,4 +22,36 @@ QuicServerMigrationNegotiator::getSupportedProtocols() const {
   return supportedProtocols_;
 }
 
+std::string QuicServerMigrationNegotiator::supportedProtocolsToString() {
+  if (supportedProtocols_.empty()) {
+    return "none";
+  }
+  folly::fbstring output;
+  for (const auto& protocol : supportedProtocols_) {
+    if (output.empty()) {
+      output = folly::fbstring(serverMigrationProtocolString(protocol));
+    } else {
+      output = output + ", " +
+          folly::fbstring(serverMigrationProtocolString(protocol));
+    }
+  }
+  return output.toStdString();
+}
+
+std::string QuicServerMigrationNegotiator::negotiatedProtocolsToString() {
+  if (!negotiatedProtocols_ || negotiatedProtocols_->empty()) {
+    return "none";
+  }
+  folly::fbstring output;
+  for (const auto& protocol : negotiatedProtocols_.value()) {
+    if (output.empty()) {
+      output = folly::fbstring(serverMigrationProtocolString(protocol));
+    } else {
+      output = output + ", " +
+          folly::fbstring(serverMigrationProtocolString(protocol));
+    }
+  }
+  return output.toStdString();
+}
+
 } // namespace quic

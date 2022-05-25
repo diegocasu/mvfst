@@ -356,11 +356,15 @@ void restoreCongestionAndRttState(
 void handlePoolMigrationAddressFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::PoolMigrationAddressFrame& frame) {
+  VLOG(3) << "Received a POOL_MIGRATION_ADDRESS frame carrying the address "
+          << quicIPAddressToString(frame.address);
+
   // Do not process duplicates.
   if (connectionState.serverMigrationState.protocolState &&
       connectionState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
           ->addressScheduler->contains(frame.address)) {
+    VLOG(3) << "Ignoring a duplicate pool migration address";
     return;
   }
 
@@ -383,7 +387,8 @@ void handlePoolMigrationAddressFrame(
       (connectionState.peerAddress.getIPAddress().isV6() &&
        !frame.address.hasIPv6Field())) {
     throw quic::QuicTransportException(
-        "Received a POOL_MIGRATION_ADDRESS frame not carrying an address of a supported family",
+        "Received a POOL_MIGRATION_ADDRESS frame not carrying an address "
+        "of a supported family",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
 
@@ -421,7 +426,8 @@ void handlePoolMigrationAddressAck(
 
   if (it == protocolState->migrationAddresses.end()) {
     throw quic::QuicTransportException(
-        "Received an acknowledgement for a POOL_MIGRATION_ADDRESS frame that was never sent",
+        "Received an acknowledgement for a POOL_MIGRATION_ADDRESS frame"
+        " that was never sent",
         quic::TransportErrorCode::INTERNAL_ERROR);
   }
   if (!it->second) {
@@ -440,12 +446,16 @@ void handlePoolMigrationAddressAck(
 void handleExplicitServerMigrationFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::ServerMigrationFrame& frame) {
+  VLOG(3) << "Received a SERVER_MIGRATION frame carrying the address "
+          << quicIPAddressToString(frame.address);
+
   if ((connectionState.peerAddress.getIPAddress().isV4() &&
        !frame.address.hasIPv4Field()) ||
       (connectionState.peerAddress.getIPAddress().isV6() &&
        !frame.address.hasIPv6Field())) {
     throw quic::QuicTransportException(
-        "Received a SERVER_MIGRATION frame not carrying an address of a supported family",
+        "Received a SERVER_MIGRATION frame not carrying an address "
+        "of a supported family",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
   if ((connectionState.peerAddress.getIPAddress().isV4() &&
@@ -455,7 +465,8 @@ void handleExplicitServerMigrationFrame(
        frame.address.getIPv6AddressAsSocketAddress() ==
            connectionState.peerAddress)) {
     throw quic::QuicTransportException(
-        "Received a SERVER_MIGRATION frame carrying the current address of the peer",
+        "Received a SERVER_MIGRATION frame carrying the current "
+        "address of the peer",
         quic::TransportErrorCode::PROTOCOL_VIOLATION);
   }
 
@@ -474,6 +485,7 @@ void handleExplicitServerMigrationFrame(
   if (connectionState.serverMigrationState.protocolState
           ->asExplicitClientState()
           ->migrationAddress == frame.address) {
+    VLOG(3) << "Ignoring a duplicate server migration address";
     return;
   }
 
@@ -511,6 +523,8 @@ void handleExplicitServerMigrationFrameAck(
 void handleSynchronizedSymmetricServerMigrationFrame(
     quic::QuicClientConnectionState& connectionState,
     const quic::ServerMigrationFrame& frame) {
+  VLOG(3) << "Received a SERVER_MIGRATION frame carrying the address "
+          << quicIPAddressToString(frame.address);
   if (!connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState =
         quic::SynchronizedSymmetricClientState();
@@ -546,6 +560,7 @@ void handleServerMigratedFrame(
   // Only handle the callbacks for both the Symmetric and Synchronized
   // Symmetric protocols. The update of the state is handled directly in
   // maybeDetectSymmetricMigration().
+  VLOG(3) << "Received a SERVER_MIGRATED frame";
   if (!connectionState.serverMigrationState.protocolState) {
     connectionState.serverMigrationState.protocolState =
         quic::SymmetricClientState();
@@ -641,6 +656,8 @@ void maybeUpdateExplicitServerMigrationProbing(
             quic::ServerMigrationProtocol::EXPLICIT,
             connectionState.peerAddress);
   }
+  VLOG(3) << "Server migration detected: sending probes to the address "
+          << connectionState.peerAddress.describe();
 }
 
 void maybeEndExplicitServerMigrationProbing(
@@ -664,6 +681,9 @@ void maybeEndExplicitServerMigrationProbing(
     // will not be invoked again at the next PTO. This is not needed, because
     // the next PTO will restart the same migration probing that was
     // previously notified.
+    VLOG(3) << "Stopping server migration probing: received the highest-"
+               "numbered non-probing packet from the old server address "
+            << peerAddress.describe() << ". Rolling back to the previous state";
     connectionState.peerAddress = protocolState->serverAddressBeforeProbing;
     protocolState->serverAddressBeforeProbing = folly::SocketAddress();
     protocolState->probingInProgress = false;
@@ -678,6 +698,9 @@ void maybeEndExplicitServerMigrationProbing(
   }
   if (peerAddress == expectedPeerAddress) {
     // Stop the probing.
+    VLOG(3) << "Stopping server migration probing: received the highest-"
+               "numbered non-probing packet from the new server address "
+            << peerAddress.describe();
     protocolState->probingInProgress = false;
     protocolState->probingFinished = true;
 
@@ -727,6 +750,8 @@ void maybeUpdatePoolOfAddressesServerMigrationProbing(
             quic::ServerMigrationProtocol::POOL_OF_ADDRESSES,
             connectionState.peerAddress);
   }
+  VLOG(3) << "Server migration detected: sending probes to the address "
+          << connectionState.peerAddress.describe();
 }
 
 void maybeEndPoolOfAddressesServerMigrationProbing(
@@ -740,6 +765,9 @@ void maybeEndPoolOfAddressesServerMigrationProbing(
   if (peerAddress == protocolState->serverAddressBeforeProbing) {
     // The PTO was due to a packet loss, not a server migration.
     // Stop the probing and restore the congestion controller state.
+    VLOG(3) << "Stopping server migration probing: received the highest-"
+               "numbered non-probing packet from the old server address "
+            << peerAddress.describe() << ". Rolling back to the previous state";
     connectionState.peerAddress = protocolState->serverAddressBeforeProbing;
     protocolState->serverAddressBeforeProbing = folly::SocketAddress();
     protocolState->probingInProgress = false;
@@ -756,6 +784,10 @@ void maybeEndPoolOfAddressesServerMigrationProbing(
     return;
   }
   if (protocolState->addressScheduler->contains(peerAddress)) {
+    VLOG(3) << "Stopping server migration probing: received the highest-"
+               "numbered non-probing packet from the new server address "
+            << peerAddress.describe();
+
     // Due to congestion/latency/loss, the packet could have been sent by an
     // address already cycled by the scheduler, so update the peer address.
     connectionState.peerAddress = peerAddress;
@@ -892,6 +924,11 @@ void updateServerMigrationFrameOnPacketReceived(
       TransportErrorCode::PROTOCOL_VIOLATION);
 
   if (ignoreOldFrame(connectionState, frame, packetNumber)) {
+    VLOG(3)
+        << "Ignoring old QuicServerMigrationFrame. Largest processed packet number="
+        << connectionState.serverMigrationState.largestProcessedPacketNumber
+               .value()
+        << ", received packet number=" << packetNumber;
     return;
   }
   updateLargestProcessedPacketNumber(connectionState, packetNumber);
@@ -938,6 +975,11 @@ void updateServerMigrationFrameOnPacketAckReceived(
       TransportErrorCode::INTERNAL_ERROR);
 
   if (ignoreOldAck(connectionState, frame, packetNumber)) {
+    VLOG(3) << "Ignoring old packet carrying a QuicServerMigrationFrame ack. "
+               "Largest processed packet number="
+            << connectionState.serverMigrationState.largestProcessedPacketNumber
+                   .value()
+            << ", received packet number=" << packetNumber;
     return;
   }
   updateLargestProcessedPacketNumber(connectionState, packetNumber);
@@ -996,6 +1038,7 @@ void updateServerMigrationFrameOnPacketLoss(
       // Note that the client detects the server migration when the first
       // non-probing packet from the new address arrives, so there is no need
       // to enforce a retransmission.
+      VLOG(3) << "Skipping retransmission of a SERVER_MIGRATED frame";
       break;
     default:
       // Retransmit the frame.
@@ -1062,6 +1105,8 @@ void maybeDetectSymmetricMigration(
     // a Symmetric migration, but a SERVER_MIGRATED frame was not carried in the
     // first packet received from the new server address. Then, perform here the
     // same checks done when a SERVER_MIGRATED frame is received.
+    VLOG(3) << "Detected a Symmetric migration without receiving "
+               "a SERVER_MIGRATED frame";
     throwIfUnexpectedServerMigratedFrame(connectionState, peerAddress);
     // Here and in the following switch cases, the largest processed packet
     // number must be updated, as happens with the reception of SERVER_MIGRATED.
@@ -1079,11 +1124,13 @@ void maybeDetectSymmetricMigration(
         PoolOfAddressesClientState:
       return;
     case QuicServerMigrationProtocolClientState::Type::SymmetricClientState:
+      VLOG(3) << "Detected a Symmetric migration";
       updateLargestProcessedPacketNumber(connectionState, packetNumber);
       handleSymmetricMigration(connectionState, peerAddress);
       return;
     case QuicServerMigrationProtocolClientState::Type::
         SynchronizedSymmetricClientState:
+      VLOG(3) << "Detected a Synchronized Symmetric migration";
       updateLargestProcessedPacketNumber(connectionState, packetNumber);
       handleSynchronizedSymmetricMigration(connectionState, peerAddress);
       return;
@@ -1095,6 +1142,7 @@ void endServerMigration(
     QuicClientConnectionState& connectionState,
     const PacketNum& packetNumber) {
   CHECK(connectionState.serverMigrationState.protocolState);
+  VLOG(3) << "Ending server migration";
   connectionState.serverMigrationState.migrationInProgress = false;
   connectionState.serverMigrationState.numberOfMigrations += 1;
 
@@ -1132,6 +1180,7 @@ void endServerMigration(
     QuicServerConnectionState& connectionState,
     const PacketNum& packetNumber) {
   CHECK(connectionState.serverMigrationState.protocolState);
+  VLOG(3) << "Ending server migration";
   connectionState.serverMigrationState.migrationInProgress = false;
 
   // Clear the protocol state, so that future migrations are possible. The only

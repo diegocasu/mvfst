@@ -46,6 +46,10 @@ class QuicServerMigrationNegotiator {
   const std::unordered_set<ServerMigrationProtocol>& getSupportedProtocols()
       const;
 
+  std::string supportedProtocolsToString();
+
+  std::string negotiatedProtocolsToString();
+
   /**
    * Returns the encoded value of the server_migration_suite transport
    * parameter to send to the peer. This method is called before the

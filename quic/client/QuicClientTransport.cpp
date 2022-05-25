@@ -1856,19 +1856,22 @@ void QuicClientTransport::setSupportedVersions(
 bool QuicClientTransport::allowServerMigration(
     const std::unordered_set<ServerMigrationProtocol>& supportedProtocols) {
   if (supportedProtocols.empty()) {
-    LOG(ERROR) << "No protocols specified for server migration";
+    LOG(ERROR) << "Cannot enable server migration: no protocols specified";
     return false;
   }
   clientConn_->serverMigrationState.negotiator =
       QuicServerMigrationNegotiatorClient(supportedProtocols);
   clientConn_->probeTimeoutCallback = shared_from_this();
+  VLOG(3) << "Allowing server migration with supported protocols: "
+          << clientConn_->serverMigrationState.negotiator
+                 ->supportedProtocolsToString();
   return true;
 }
 
 bool QuicClientTransport::setServerMigrationEventCallback(
     std::shared_ptr<ServerMigrationEventCallback> callback) {
   if (!callback) {
-    LOG(ERROR) << "Null server migration event callback";
+    LOG(ERROR) << "Cannot set server migration event callback: null value";
     return false;
   }
   clientConn_->serverMigrationState.serverMigrationEventCallback =
@@ -1879,7 +1882,8 @@ bool QuicClientTransport::setServerMigrationEventCallback(
 bool QuicClientTransport::setPoolMigrationAddressSchedulerFactory(
     std::unique_ptr<PoolMigrationAddressSchedulerFactory> factory) {
   if (!factory) {
-    LOG(ERROR) << "Null pool migration address factory";
+    LOG(ERROR)
+        << "Cannot set pool migration address scheduler factory: null value";
     return false;
   }
   clientConn_->serverMigrationState.poolMigrationAddressSchedulerFactory =

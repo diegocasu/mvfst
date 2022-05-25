@@ -119,6 +119,8 @@ class ServerTransportParametersExtension : public fizz::ServerExtensions {
         customTransportParameters_.push_back(
             serverMigrationNegotiator_->onTransportParametersEncoding());
       }
+      VLOG(3) << "Negotiated server migration protocols: "
+              << serverMigrationNegotiator_->negotiatedProtocolsToString();
     }
 
     for (const auto& customParameter : customTransportParameters_) {

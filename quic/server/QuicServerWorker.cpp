@@ -1452,6 +1452,7 @@ void QuicServerWorker::onImminentServerMigration(
   for (auto& element : connectionIdMap_) {
     auto it = migrationSettings.find(element.first);
     if (it != migrationSettings.end()) {
+      VLOG(10) << "Found transport to migrate. CID=" << element.first.hex();
       transportsToMigrate.emplace_back(std::make_pair(element.second, it));
       continue;
     }
@@ -1464,6 +1465,9 @@ void QuicServerWorker::onImminentServerMigration(
         // CID in connectionIdMap_ has already been found, or it will be
         // in one of the next iterations. This avoids calling
         // onImminentServerMigration() multiple times.
+        VLOG(10) << "Found alias for a transport to migrate. Original CID="
+                 << transportOriginalCid->hex()
+                 << ", alias CID=" << element.first.hex();
         continue;
       }
     }
@@ -1472,11 +1476,14 @@ void QuicServerWorker::onImminentServerMigration(
     // migration. Then, close the transport. Since calling closeNow() multiple
     // times on the same transport is not a problem, it is not necessary
     // to make further checks.
+    VLOG(10) << "Found transport to close. CID=" << element.first.hex();
     transportsToClose.push_back(element.second);
   }
 
   // Close all the transports still in the handshake phase.
   for (auto& element : sourceAddressMap_) {
+    VLOG(10) << "Found transport to close, because in the handshake phase. CID="
+             << element.first.second.hex();
     transportsToClose.push_back(element.second);
   }
 
@@ -1505,12 +1512,18 @@ void QuicServerWorker::onImminentServerMigration(
     // Avoid calling onImminentServerMigration() multiple times
     // on the same transport if there are CID aliases.
     if (!transportsToMigrate.count(element.second)) {
+      VLOG(10) << "Found transport to migrate. CID=" << element.first.hex();
       transportsToMigrate.insert(element.second);
+      continue;
     }
+    VLOG(10) << "Found alias for a transport to migrate. Alias CID="
+             << element.first.hex();
   }
 
   // Close all the transports still in the handshake phase.
   for (auto& element : sourceAddressMap_) {
+    VLOG(10) << "Found transport to close, because in the handshake phase. CID="
+             << element.first.second.hex();
     transportsToClose.push_back(element.second);
   }
 

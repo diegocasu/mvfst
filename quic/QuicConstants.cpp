@@ -155,4 +155,19 @@ folly::StringPiece readNoReadReasonString(NoReadReason reason) {
   folly::assume_unreachable();
 }
 
+folly::StringPiece serverMigrationProtocolString(
+    ServerMigrationProtocol protocol) {
+  switch (protocol) {
+    case ServerMigrationProtocol::EXPLICIT:
+      return "Explicit";
+    case ServerMigrationProtocol::POOL_OF_ADDRESSES:
+      return "Pool of Addresses";
+    case ServerMigrationProtocol::SYMMETRIC:
+      return "Symmetric";
+    case ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC:
+      return "Synchronized Symmetric";
+  }
+  folly::assume_unreachable();
+}
+
 } // namespace quic

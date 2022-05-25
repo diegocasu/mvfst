@@ -156,6 +156,11 @@ void processServerInitialParams(
     }
     conn.serverMigrationState.negotiator->onMigrationSuiteReceived(*it);
   }
+  if (conn.serverMigrationState.negotiator) {
+    VLOG(3)
+        << "Negotiated server migration protocols: "
+        << conn.serverMigrationState.negotiator->negotiatedProtocolsToString();
+  }
 
   // TODO Validate active_connection_id_limit
 

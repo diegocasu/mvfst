@@ -142,42 +142,48 @@ void QuicServerTransport::setServerConnectionIdRejector(
 bool QuicServerTransport::allowServerMigration(
     const std::unordered_set<ServerMigrationProtocol>& supportedProtocols) {
   if (supportedProtocols.empty()) {
-    LOG(ERROR) << "No protocols specified for server migration";
+    LOG(ERROR) << "Cannot enable server migration: no protocols specified";
     return false;
   }
   serverConn_->serverMigrationState.negotiator =
       std::make_shared<QuicServerMigrationNegotiatorServer>(supportedProtocols);
+  VLOG(3) << "Allowing server migration with supported protocols: "
+          << serverConn_->serverMigrationState.negotiator
+                 ->supportedProtocolsToString();
   return true;
 }
 
 bool QuicServerTransport::addPoolMigrationAddress(
     const QuicIPAddress& address) {
   if (!serverConn_->serverMigrationState.negotiator) {
-    LOG(ERROR) << "Server migration is not enabled";
+    LOG(ERROR)
+        << "Cannot add pool migration address: server migration is disabled";
     return false;
   }
   if (!serverConn_->serverMigrationState.negotiator->getSupportedProtocols()
            .count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
-    LOG(ERROR)
-        << "Pool of Addresses is not among the supported migration protocols";
+    LOG(ERROR) << "Cannot add pool migration address: "
+                  "Pool of Addresses is not among the supported protocols";
     return false;
   }
   if (address.isAllZero()) {
     LOG(ERROR)
-        << "All-zero addresses are not allowed in the Pool of Addresses protocol";
+        << "Cannot add pool migration address: all-zero addresses are not allowed";
     return false;
   }
   if (socket_->address().getIPAddress().isV4() && !address.hasIPv4Field()) {
-    LOG(ERROR) << "The transport needs a non-zero IPv4 address and port";
+    LOG(ERROR)
+        << "Cannot add pool migration address: the transport uses IPv4 addresses";
     return false;
   }
   if (socket_->address().getIPAddress().isV6() && !address.hasIPv6Field()) {
-    LOG(ERROR) << "The transport needs a non-zero IPv6 address and port";
+    LOG(ERROR)
+        << "Cannot add pool migration address: the transport uses IPv6 addresses";
     return false;
   }
   if (serverConn_->serverHandshakeLayer->isHandshakeDone()) {
     LOG(ERROR)
-        << "Cannot send pool migration addresses after the handshake is completed";
+        << "Cannot add pool migration address: handshake is already completed";
     return false;
   }
   if (!serverConn_->serverMigrationState.pendingPoolMigrationAddresses) {
@@ -189,7 +195,7 @@ bool QuicServerTransport::addPoolMigrationAddress(
       serverConn_->serverMigrationState.pendingPoolMigrationAddresses->emplace(
           std::move(address), false);
   if (!result.second) {
-    LOG(ERROR) << "Ignoring attempt to add a duplicate address";
+    LOG(ERROR) << "Cannot add pool migration address: address is a duplicate";
   }
   return result.second;
 }
@@ -303,6 +309,9 @@ void QuicServerTransport::handleExplicitImminentServerMigration(
   sendServerMigrationFrame(
       *serverConn_, ServerMigrationFrame(migrationAddress.value()));
   updateWriteLooper(true);
+  VLOG(3) << "Imminent server migration with the Explicit protocol notified. "
+             "Sending a SERVER_MIGRATION frame carrying the address "
+          << quicIPAddressToString(migrationAddress.value());
 }
 
 void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
@@ -360,6 +369,8 @@ void QuicServerTransport::handlePoolOfAddressesImminentServerMigration(
         ->onServerMigrationReady(
             serverConn_->serverMigrationState.originalConnectionId.value());
   }
+  VLOG(3)
+      << "Imminent server migration with the Pool of Addresses protocol notified";
 }
 
 void QuicServerTransport::handleSymmetricImminentServerMigration(
@@ -399,6 +410,7 @@ void QuicServerTransport::handleSymmetricImminentServerMigration(
         ->onServerMigrationReady(
             serverConn_->serverMigrationState.originalConnectionId.value());
   }
+  VLOG(3) << "Imminent server migration with the Symmetric protocol notified";
 }
 
 void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
@@ -434,8 +446,13 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
   serverConn_->serverMigrationState.protocolState =
       SynchronizedSymmetricServerState();
   serverConn_->serverMigrationState.migrationInProgress = true;
-  sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(QuicIPAddress()));
+  QuicIPAddress emptyAddress;
+  sendServerMigrationFrame(*serverConn_, ServerMigrationFrame(emptyAddress));
   updateWriteLooper(true);
+  VLOG(3)
+      << "Imminent server migration with the Synchronized Symmetric protocol"
+         " notified. Sending a SERVER_MIGRATION frame carrying the address "
+      << quicIPAddressToString(emptyAddress);
 }
 
 void QuicServerTransport::onNetworkSwitch(
@@ -483,6 +500,7 @@ void QuicServerTransport::onNetworkSwitch(
     case QuicServerMigrationProtocolServerState::Type::
         SynchronizedSymmetricServerState:
       if (shouldWriteData(*conn_) == WriteDataReason::NO_WRITE) {
+        VLOG(3) << "Sending a SERVER_MIGRATED frame after network switch";
         sendServerMigrationFrame(*serverConn_, ServerMigratedFrame());
       }
       updateWriteLooper(true);
@@ -494,7 +512,7 @@ void QuicServerTransport::onNetworkSwitch(
 bool QuicServerTransport::setClientStateUpdateCallback(
     std::shared_ptr<ClientStateUpdateCallback> callback) {
   if (!callback) {
-    LOG(ERROR) << "Null client state update callback";
+    LOG(ERROR) << "Cannot set client state update callback: null value";
     return false;
   }
   serverConn_->serverMigrationState.clientStateUpdateCallback =
@@ -505,7 +523,7 @@ bool QuicServerTransport::setClientStateUpdateCallback(
 bool QuicServerTransport::setServerMigrationEventCallback(
     std::shared_ptr<ServerMigrationEventCallback> callback) {
   if (!callback) {
-    LOG(ERROR) << "Null server migration event callback";
+    LOG(ERROR) << "Cannot set server migration event callback: null value";
     return false;
   }
   serverConn_->serverMigrationState.serverMigrationEventCallback =
@@ -975,8 +993,7 @@ void QuicServerTransport::maybeSendPoolMigrationAddresses() {
              ->getNegotiatedProtocols() ||
         !serverConn_->serverMigrationState.negotiator->getNegotiatedProtocols()
              ->count(ServerMigrationProtocol::POOL_OF_ADDRESSES)) {
-      LOG(INFO)
-          << "Ignoring the address pool due to Pool of Addresses not negotiated";
+      VLOG(3) << "Ignoring the address pool: Pool of Addresses not negotiated";
       serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
       return;
     }
@@ -985,8 +1002,7 @@ void QuicServerTransport::maybeSendPoolMigrationAddresses() {
       // invoked again after the previously pending POOL_MIGRATION_ADDRESS
       // frames have been sent, or it is invoked after a different
       // migration protocol has been chosen.
-      LOG(INFO)
-          << "Ignoring the address pool due to protocol state already created";
+      VLOG(3) << "Ignoring the address pool: protocol state already created";
       serverConn_->serverMigrationState.pendingPoolMigrationAddresses.clear();
       return;
     }
@@ -995,6 +1011,8 @@ void QuicServerTransport::maybeSendPoolMigrationAddresses() {
                                    .pendingPoolMigrationAddresses.value()) {
       PoolMigrationAddressFrame frame(address.first);
       sendServerMigrationFrame(*serverConn_, std::move(frame));
+      VLOG(3) << "Sending a POOL_MIGRATION_ADDRESS frame carrying the address "
+              << quicIPAddressToString(address.first);
     }
 
     PoolOfAddressesServerState protocolState;

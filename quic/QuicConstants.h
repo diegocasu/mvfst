@@ -665,6 +665,9 @@ enum class ServerMigrationProtocol : uint64_t {
   MAX = SYNCHRONIZED_SYMMETRIC,
 };
 
+folly::StringPiece serverMigrationProtocolString(
+    ServerMigrationProtocol protocol);
+
 enum class ServerMigrationError : uint16_t {
   MIGRATION_DISABLED,
   HANDSHAKE_NOT_FINISHED,
