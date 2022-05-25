@@ -112,4 +112,9 @@ size_t QuicIPAddressHash::operator()(const QuicIPAddress& quicIpAddress) const {
           &quicIpAddress.ipv6Port, sizeof(quicIpAddress.ipv6Port)));
 }
 
+std::string quicIPAddressToString(const QuicIPAddress& address) {
+  return address.getIPv4AddressAsSocketAddress().describe() + "||" +
+      address.getIPv6AddressAsSocketAddress().describe();
+}
+
 } // namespace quic

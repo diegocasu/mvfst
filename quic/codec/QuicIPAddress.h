@@ -89,4 +89,6 @@ struct QuicIPAddressHash {
   size_t operator()(const QuicIPAddress& quicIpAddress) const;
 };
 
+std::string quicIPAddressToString(const QuicIPAddress& address);
+
 } // namespace quic

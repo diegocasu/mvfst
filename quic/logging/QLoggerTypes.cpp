@@ -155,8 +155,7 @@ folly::dynamic DatagramFrameLog::toDynamic() const {
 folly::dynamic ServerMigrationFrameLog::toDynamic() const {
   folly::dynamic d = folly::dynamic::object();
   d["frame_type"] = toQlogString(FrameType::SERVER_MIGRATION);
-  d["address"] = address.getIPv4AddressAsSocketAddress().describe() + "|" +
-      address.getIPv6AddressAsSocketAddress().describe();
+  d["address"] = quicIPAddressToString(address);
   return d;
 }
 
@@ -169,8 +168,7 @@ folly::dynamic ServerMigratedFrameLog::toDynamic() const {
 folly::dynamic PoolMigrationAddressFrameLog::toDynamic() const {
   folly::dynamic d = folly::dynamic::object();
   d["frame_type"] = toQlogString(FrameType::POOL_MIGRATION_ADDRESS);
-  d["address"] = address.getIPv4AddressAsSocketAddress().describe() + "|" +
-      address.getIPv6AddressAsSocketAddress().describe();
+  d["address"] = quicIPAddressToString(address);
   return d;
 }
 
