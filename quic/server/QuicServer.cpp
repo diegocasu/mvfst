@@ -856,10 +856,6 @@ void QuicServer::onImminentServerMigration(
 
 void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
   auto currentAddress = getAddress();
-  if (currentAddress == newAddress) {
-    LOG(ERROR) << "The new address is identical to the current one";
-    return;
-  }
   if (currentAddress.getIPAddress().version() !=
       newAddress.getIPAddress().version()) {
     LOG(ERROR) << "Impossible to change the address due to IP version mismatch";
