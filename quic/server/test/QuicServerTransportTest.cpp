@@ -2926,18 +2926,14 @@ TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithoutProtocolState) {
   ASSERT_NE(newAddress, server->getSocket().address());
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigrationFailed)
-      .Times(Exactly(1))
-      .WillOnce([&](Unused, ServerMigrationError error) {
-        EXPECT_EQ(error, ServerMigrationError::INVALID_STATE);
-      });
-
+  EXPECT_CALL(*callback, onServerMigrationFailed).Times(Exactly(0));
   server->setServerMigrationEventCallback(callback);
   ASSERT_TRUE(!server->getConn().serverMigrationState.protocolState);
 
   auto newSocket = std::make_unique<folly::AsyncUDPSocket>(&evb);
   newSocket->bind(newAddress, folly::AsyncUDPSocket::BindOptions());
   server->onNetworkSwitch(std::move(newSocket));
+  EXPECT_NE(newAddress, server->getSocket().address());
   EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 

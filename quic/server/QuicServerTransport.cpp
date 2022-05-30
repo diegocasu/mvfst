@@ -474,16 +474,15 @@ void QuicServerTransport::onNetworkSwitch(
             QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
         false);
   };
+  if (!serverConn_->serverMigrationState.protocolState) {
+    VLOG(3) << "Ignoring attempt to change the transport socket: "
+               "migration protocol state not initialized";
+    return;
+  }
   if (!newSocket) {
     invokeFailureCallbackAndClose(
         ServerMigrationError::INVALID_ADDRESS,
         "Attempt to change the transport socket with a null socket");
-    return;
-  }
-  if (!serverConn_->serverMigrationState.protocolState) {
-    invokeFailureCallbackAndClose(
-        ServerMigrationError::INVALID_STATE,
-        "Attempt to change the transport socket without first notifying a migration");
     return;
   }
   auto oldSocket = std::move(socket_);
