@@ -491,7 +491,10 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
    * a server migration is imminent and should be performed using the specified
    * protocols. For each transport managed by the worker, either
    * onImminentServerMigration() or closeNow() is called.
-   * CIDs of connections not managed by the worker are ignored.
+   * A supplied CID must be the original CID used by the corresponding server
+   * transport to finalize the handshake, i.e. it must not be a CID issued
+   * using a NEW_CONNECTION_ID frame (alias). CIDs of connections not managed
+   * by the worker are ignored.
    * @param  migrationSettings  the list of connection IDs identifying the
    *                            transports involved in the migration, together
    *                            with the protocol to use and possibly the
