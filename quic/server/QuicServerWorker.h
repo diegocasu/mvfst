@@ -527,8 +527,6 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
   /**
    * Notifies all the transports managed by the worker to bind to a
    * new address due to a migration.
-   * @param newAddress  the new address of the server. It must be of the same
-   *                    family of the one being replaced.
    */
   void onNetworkSwitch();
 
