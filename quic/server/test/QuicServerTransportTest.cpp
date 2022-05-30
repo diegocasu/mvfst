@@ -2921,7 +2921,7 @@ TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithNullSocket) {
   EXPECT_TRUE(server->getConn().pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithoutProtocolState) {
+TEST_F(QuicServerTransportTest, TestOnNetworkSwitchWithNewSocketMissingProtocolState) {
   folly::SocketAddress newAddress("127.11.11.11", 1234);
   ASSERT_NE(newAddress, server->getSocket().address());
 

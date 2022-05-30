@@ -525,10 +525,12 @@ class QuicServerWorker : public folly::AsyncUDPSocket::ReadCallback,
       const folly::Optional<QuicIPAddress>& migrationAddress);
 
   /**
-   * Notifies all the transports managed by the worker to bind to a
-   * new address due to a migration.
+   * Notifies all the transports managed by the worker about a migration,
+   * and possibly to bind to the new address.
+   * @param rebind  true if the transports should bind to the new address,
+   *                false otherwise.
    */
-  void onNetworkSwitch();
+  void onNetworkSwitch(bool rebind);
 
  private:
   /**

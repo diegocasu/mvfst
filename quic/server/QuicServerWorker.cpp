@@ -1538,10 +1538,14 @@ void QuicServerWorker::onImminentServerMigration(
   }
 }
 
-void QuicServerWorker::onNetworkSwitch() {
+void QuicServerWorker::onNetworkSwitch(bool rebind) {
   for (auto& transport : connectionIdMap_) {
-    auto newSocket = makeSocket(getEventBase());
-    transport.second->onNetworkSwitch(std::move(newSocket));
+    if (rebind) {
+      auto newSocket = makeSocket(getEventBase());
+      transport.second->onNetworkSwitch(std::move(newSocket));
+    } else {
+      transport.second->onNetworkSwitch();
+    }
   }
 }
 

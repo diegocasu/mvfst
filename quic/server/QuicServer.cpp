@@ -305,7 +305,7 @@ void QuicServer::bindWorkersToSocket(
             self->startCv_.notify_all();
           }
           if (fromNetworkSwitch) {
-            worker->onNetworkSwitch();
+            worker->onNetworkSwitch(true);
           }
         });
   }
@@ -867,6 +867,12 @@ void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
   bindWorkersToSocket(newAddress, evbs, true);
   waitUntilInitialized();
   resumeRead();
+  // Start again to accept new connections.
+  rejectNewConnections([]() { return false; });
+}
+
+void QuicServer::onNetworkSwitch() {
+  runOnAllWorkers([&](auto worker) mutable { worker->onNetworkSwitch(false); });
   // Start again to accept new connections.
   rejectNewConnections([]() { return false; });
 }

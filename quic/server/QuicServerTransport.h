@@ -172,6 +172,11 @@ class QuicServerTransport
       std::unique_ptr<folly::AsyncUDPSocket> newSocket) override;
 
   /**
+   * Notifies the transport about a migration.
+   */
+  void onNetworkSwitch();
+
+  /**
    * Sets the callback to invoke when the server migration management
    * interface should be informed about the change of a client's state.
    * @param callback  the callback.
@@ -281,6 +286,7 @@ class QuicServerTransport
       const folly::Optional<QuicIPAddress>& migrationAddress);
   void handleSynchronizedSymmetricImminentServerMigration(
       const folly::Optional<QuicIPAddress>& migrationAddress);
+  void onNetworkSwitchCommon();
 
  private:
   RoutingCallback* routingCb_{nullptr};

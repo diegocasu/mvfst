@@ -446,6 +446,14 @@ class QuicServer : public QuicServerWorker::WorkerCallback,
    */
   void onNetworkSwitch(const folly::SocketAddress& newAddress);
 
+  /**
+   * Notifies all the transports about a migration and to start again
+   * accepting new connections. This version of onNetworkSwitch() does not
+   * replace/rebind the sockets and should be used when the server address
+   * is preserved by the migration (ex. the server binds to 0.0.0.0).
+   */
+  void onNetworkSwitch();
+
  private:
   QuicServer();
 

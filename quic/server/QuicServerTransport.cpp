@@ -457,9 +457,12 @@ void QuicServerTransport::handleSynchronizedSymmetricImminentServerMigration(
 
 void QuicServerTransport::onNetworkSwitch(
     std::unique_ptr<folly::AsyncUDPSocket> newSocket) {
-  auto invokeFailureCallbackAndClose = [this](
-                                           const ServerMigrationError& error,
-                                           const std::string& errorMsg) {
+  if (!serverConn_->serverMigrationState.protocolState) {
+    VLOG(3) << "Ignoring attempt to change the transport socket: "
+               "migration protocol state not initialized";
+    return;
+  }
+  if (!newSocket) {
     // The value of the server CID is checked because the lambda could be
     // called before the handshake has been finished and the CID derived.
     if (serverConn_->serverMigrationState.serverMigrationEventCallback &&
@@ -467,29 +470,32 @@ void QuicServerTransport::onNetworkSwitch(
       serverConn_->serverMigrationState.serverMigrationEventCallback
           ->onServerMigrationFailed(
               serverConn_->serverMigrationState.originalConnectionId.value(),
-              error);
+              ServerMigrationError::INVALID_ADDRESS);
     }
     closeImpl(
         QuicError(
-            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED), errorMsg),
+            QuicErrorCode(LocalErrorCode::SERVER_MIGRATION_FAILED),
+            "Attempt to change the transport socket with a null socket"),
         false);
-  };
-  if (!serverConn_->serverMigrationState.protocolState) {
-    VLOG(3) << "Ignoring attempt to change the transport socket: "
-               "migration protocol state not initialized";
-    return;
-  }
-  if (!newSocket) {
-    invokeFailureCallbackAndClose(
-        ServerMigrationError::INVALID_ADDRESS,
-        "Attempt to change the transport socket with a null socket");
     return;
   }
   auto oldSocket = std::move(socket_);
   oldSocket->pauseRead();
   oldSocket->close();
   socket_ = std::move(newSocket);
+  onNetworkSwitchCommon();
+}
 
+void QuicServerTransport::onNetworkSwitch() {
+  if (!serverConn_->serverMigrationState.protocolState) {
+    VLOG(3) << "Ignoring attempt to notify a network switch: "
+               "migration protocol state not initialized";
+    return;
+  }
+  onNetworkSwitchCommon();
+}
+
+void QuicServerTransport::onNetworkSwitchCommon() {
   switch (serverConn_->serverMigrationState.protocolState->type()) {
     case QuicServerMigrationProtocolServerState::Type::ExplicitServerState:
     case QuicServerMigrationProtocolServerState::Type::
