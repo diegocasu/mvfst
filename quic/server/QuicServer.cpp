@@ -835,7 +835,7 @@ bool QuicServer::removeAcceptObserver(
 
 void QuicServer::onImminentServerMigration(
     const ServerMigrationSettings& migrationSettings) {
-  // Reject new connections until the server migration has been completed.
+  VLOG(3) << "Rejecting new connections until the migration has been completed";
   rejectNewConnections([]() { return true; });
 
   runOnAllWorkers([migrationSettings](auto worker) mutable {
@@ -846,7 +846,7 @@ void QuicServer::onImminentServerMigration(
 void QuicServer::onImminentServerMigration(
     const ServerMigrationProtocol& protocol,
     const folly::Optional<QuicIPAddress>& migrationAddress) {
-  // Reject new connections until the server migration has been completed.
+  VLOG(3) << "Rejecting new connections until the migration has been completed";
   rejectNewConnections([]() { return true; });
 
   runOnAllWorkers([protocol, migrationAddress](auto worker) mutable {
@@ -867,13 +867,13 @@ void QuicServer::onNetworkSwitch(const folly::SocketAddress& newAddress) {
   bindWorkersToSocket(newAddress, evbs, true);
   waitUntilInitialized();
   resumeRead();
-  // Start again to accept new connections.
+  VLOG(3) << "Starting accepting again new connections";
   rejectNewConnections([]() { return false; });
 }
 
 void QuicServer::onNetworkSwitch() {
   runOnAllWorkers([&](auto worker) mutable { worker->onNetworkSwitch(false); });
-  // Start again to accept new connections.
+  VLOG(3) << "Starting accepting again new connections";
   rejectNewConnections([]() { return false; });
 }
 
