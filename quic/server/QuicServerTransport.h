@@ -174,7 +174,7 @@ class QuicServerTransport
   /**
    * Notifies the transport about a migration.
    */
-  void onNetworkSwitch();
+  virtual void onNetworkSwitch();
 
   /**
    * Sets the callback to invoke when the server migration management

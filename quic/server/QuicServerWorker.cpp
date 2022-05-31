@@ -1539,13 +1539,38 @@ void QuicServerWorker::onImminentServerMigration(
 }
 
 void QuicServerWorker::onNetworkSwitch(bool rebind) {
-  for (auto& transport : connectionIdMap_) {
-    if (rebind) {
-      auto newSocket = makeSocket(getEventBase());
-      transport.second->onNetworkSwitch(std::move(newSocket));
-    } else {
-      transport.second->onNetworkSwitch();
+  std::unordered_set<std::shared_ptr<QuicServerTransport>> transportsToSwitch;
+
+  if (!rebind) {
+    // In case of no rebinding, onNetworkSwitch() will never invoke closeImpl(),
+    // so it is possible to iterate the map and call the method at once.
+    for (auto& element : connectionIdMap_) {
+      if (!transportsToSwitch.count(element.second)) {
+        VLOG(10) << "Found transport to switch. CID=" << element.first.hex();
+        transportsToSwitch.insert(element.second);
+        element.second->onNetworkSwitch();
+        continue;
+      }
+      VLOG(10) << "Found alias for a transport to switch. Alias CID="
+               << element.first.hex();
     }
+    return;
+  }
+
+  // In case of rebinding, onNetworkSwitch() could invoke closeImpl(), so two
+  // loops must be performed (same reasoning of onImminentServerMigration()).
+  for (auto& element : connectionIdMap_) {
+    if (!transportsToSwitch.count(element.second)) {
+      VLOG(10) << "Found transport to switch. CID=" << element.first.hex();
+      transportsToSwitch.insert(element.second);
+      continue;
+    }
+    VLOG(10) << "Found alias for a transport to switch. Alias CID="
+             << element.first.hex();
+  }
+  for (auto& transport : transportsToSwitch) {
+    auto newSocket = makeSocket(getEventBase());
+    transport->onNetworkSwitch(std::move(newSocket));
   }
 }
 

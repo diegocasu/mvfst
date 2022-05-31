@@ -252,6 +252,14 @@ class MockQuicTransport : public QuicServerTransport {
        const folly::Optional<QuicIPAddress>& migrationAddress),
       (override));
 
+  MOCK_METHOD(
+      void,
+      onNetworkSwitch,
+      (std::unique_ptr<folly::AsyncUDPSocket> newSocket),
+      (override));
+
+  MOCK_METHOD(void, onNetworkSwitch, ());
+
   MOCK_METHOD((folly::Optional<ConnectionId>), getOriginalConnectionId, ());
 };
 

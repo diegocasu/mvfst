@@ -1606,6 +1606,154 @@ TEST_F(QuicServerWorkerTest, TestOnImminentServerMigrationWithoutSpecifiedIds) {
   Mock::VerifyAndClearExpectations(transport5.get());
 }
 
+TEST_F(QuicServerWorkerTest, TestOnNetworkSwitchWithRebinding) {
+  auto initTestTransport = [this]() {
+    static auto counter = 0;
+    auto connectionId = getTestConnectionId(hostId_ + counter);
+    ++counter;
+
+    NiceMock<MockConnectionSetupCallback> connSetupCb;
+    NiceMock<MockConnectionCallback> connCb;
+    auto mockSock = std::make_unique<NiceMock<folly::test::MockAsyncUDPSocket>>(
+        &eventbase_);
+    EXPECT_CALL(*mockSock, address()).WillRepeatedly(ReturnRef(fakeAddress_));
+    MockQuicTransport::Ptr mockTransport =
+        std::make_shared<NiceMock<MockQuicTransport>>(
+            worker_->getEventBase(),
+            std::move(mockSock),
+            &connSetupCb,
+            &connCb,
+            nullptr);
+    EXPECT_CALL(*mockTransport, getEventBase())
+        .WillRepeatedly(Return(&eventbase_));
+    EXPECT_CALL(*mockTransport, getOriginalPeerAddress())
+        .WillRepeatedly(ReturnRef(kClientAddr));
+    EXPECT_CALL(*mockTransport, getClientChosenDestConnectionId())
+        .WillRepeatedly(Return(connectionId));
+    EXPECT_CALL(*mockTransport, getOriginalConnectionId)
+        .WillRepeatedly(Return(connectionId));
+    return std::make_pair(std::move(mockTransport), std::move(connectionId));
+  };
+
+  auto moveCidToConnectionIdMap =
+      [this](
+          std::shared_ptr<MockQuicTransport> transport,
+          const ConnectionId& connId) {
+        worker_->onConnectionIdBound(transport);
+        worker_->onConnectionIdAvailable(transport, connId);
+      };
+
+  ASSERT_TRUE(worker_->getConnectionIdMap().empty());
+
+  // Create two transports with CIDs in connectionIdMap_.
+  auto [transport1, connId1] = initTestTransport();
+  EXPECT_CALL(*transport1, closeNow).Times(0);
+  EXPECT_CALL(*transport1, onNetworkSwitch()).Times(0);
+  EXPECT_CALL(*transport1, onNetworkSwitch(_)).Times(Exactly(1));
+  createQuicConnection(kClientAddr, connId1, transport1);
+  moveCidToConnectionIdMap(transport1, connId1);
+
+  auto [transport2, connId2] = initTestTransport();
+  EXPECT_CALL(*transport2, closeNow).Times(0);
+  EXPECT_CALL(*transport2, onNetworkSwitch()).Times(0);
+  EXPECT_CALL(*transport2, onNetworkSwitch(_)).Times(Exactly(1));
+  createQuicConnection(kClientAddr, connId2, transport2);
+  moveCidToConnectionIdMap(transport2, connId2);
+
+  // Create two CID aliases for transport1.
+  auto alias1 = getTestConnectionId(hostId_ + 100);
+  ASSERT_NE(alias1, connId1);
+  worker_->onConnectionIdAvailable(transport1, alias1);
+  auto alias2 = getTestConnectionId(hostId_ + 101);
+  ASSERT_NE(alias2, connId1);
+  worker_->onConnectionIdAvailable(transport1, alias2);
+
+  // Verify that the starting conditions are the expected ones.
+  ASSERT_EQ(worker_->getConnectionIdMap().size(), 4);
+
+  // Perform the test.
+  worker_->onNetworkSwitch(true);
+
+  // Verify the expectations here to avoid misleading calls
+  // to closeNow() in the destructor of the worker.
+  Mock::VerifyAndClearExpectations(transport1.get());
+  Mock::VerifyAndClearExpectations(transport2.get());
+}
+
+TEST_F(QuicServerWorkerTest, TestOnNetworkSwitchWithoutRebinding) {
+  auto initTestTransport = [this]() {
+    static auto counter = 0;
+    auto connectionId = getTestConnectionId(hostId_ + counter);
+    ++counter;
+
+    NiceMock<MockConnectionSetupCallback> connSetupCb;
+    NiceMock<MockConnectionCallback> connCb;
+    auto mockSock = std::make_unique<NiceMock<folly::test::MockAsyncUDPSocket>>(
+        &eventbase_);
+    EXPECT_CALL(*mockSock, address()).WillRepeatedly(ReturnRef(fakeAddress_));
+    MockQuicTransport::Ptr mockTransport =
+        std::make_shared<NiceMock<MockQuicTransport>>(
+            worker_->getEventBase(),
+            std::move(mockSock),
+            &connSetupCb,
+            &connCb,
+            nullptr);
+    EXPECT_CALL(*mockTransport, getEventBase())
+        .WillRepeatedly(Return(&eventbase_));
+    EXPECT_CALL(*mockTransport, getOriginalPeerAddress())
+        .WillRepeatedly(ReturnRef(kClientAddr));
+    EXPECT_CALL(*mockTransport, getClientChosenDestConnectionId())
+        .WillRepeatedly(Return(connectionId));
+    EXPECT_CALL(*mockTransport, getOriginalConnectionId)
+        .WillRepeatedly(Return(connectionId));
+    return std::make_pair(std::move(mockTransport), std::move(connectionId));
+  };
+
+  auto moveCidToConnectionIdMap =
+      [this](
+          std::shared_ptr<MockQuicTransport> transport,
+          const ConnectionId& connId) {
+        worker_->onConnectionIdBound(transport);
+        worker_->onConnectionIdAvailable(transport, connId);
+      };
+
+  ASSERT_TRUE(worker_->getConnectionIdMap().empty());
+
+  // Create two transports with CIDs in connectionIdMap_.
+  auto [transport1, connId1] = initTestTransport();
+  EXPECT_CALL(*transport1, closeNow).Times(0);
+  EXPECT_CALL(*transport1, onNetworkSwitch()).Times(Exactly(1));
+  EXPECT_CALL(*transport1, onNetworkSwitch(_)).Times(0);
+  createQuicConnection(kClientAddr, connId1, transport1);
+  moveCidToConnectionIdMap(transport1, connId1);
+
+  auto [transport2, connId2] = initTestTransport();
+  EXPECT_CALL(*transport2, closeNow).Times(0);
+  EXPECT_CALL(*transport2, onNetworkSwitch()).Times(Exactly(1));
+  EXPECT_CALL(*transport2, onNetworkSwitch(_)).Times(0);
+  createQuicConnection(kClientAddr, connId2, transport2);
+  moveCidToConnectionIdMap(transport2, connId2);
+
+  // Create two CID aliases for transport1.
+  auto alias1 = getTestConnectionId(hostId_ + 100);
+  ASSERT_NE(alias1, connId1);
+  worker_->onConnectionIdAvailable(transport1, alias1);
+  auto alias2 = getTestConnectionId(hostId_ + 101);
+  ASSERT_NE(alias2, connId1);
+  worker_->onConnectionIdAvailable(transport1, alias2);
+
+  // Verify that the starting conditions are the expected ones.
+  ASSERT_EQ(worker_->getConnectionIdMap().size(), 4);
+
+  // Perform the test.
+  worker_->onNetworkSwitch(false);
+
+  // Verify the expectations here to avoid misleading calls
+  // to closeNow() in the destructor of the worker.
+  Mock::VerifyAndClearExpectations(transport1.get());
+  Mock::VerifyAndClearExpectations(transport2.get());
+}
+
 class MockAcceptObserver : public AcceptObserver {
  public:
   MOCK_METHOD((void), accept, (QuicTransportBase* const), (noexcept));
