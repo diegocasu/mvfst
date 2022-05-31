@@ -172,7 +172,9 @@ class QuicServerTransport
       std::unique_ptr<folly::AsyncUDPSocket> newSocket) override;
 
   /**
-   * Notifies the transport about a migration.
+   * Notifies the transport about a migration. This version of onNetworkSwitch()
+   * does not replace/rebind the socket and should be used when the server
+   * address is preserved by the migration (ex. the server binds to 0.0.0.0).
    */
   virtual void onNetworkSwitch();
 
