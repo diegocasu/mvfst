@@ -127,9 +127,9 @@ class ServerMigrationEventCallback {
 
   /**
    * Called when a SERVER_MIGRATED frame is received.
-   * It is not called if the frame is a duplicate, or
-   * causes a protocol violation.
-   * It should be implemented only on the client side.
+   * It is not called if the frame is a duplicate, or causes a protocol
+   * violation, or arrives out of order and the migration has already
+   * been detected. It should be implemented only on the client side.
    */
   virtual void onServerMigratedReceived() noexcept {};
 

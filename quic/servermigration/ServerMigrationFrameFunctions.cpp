@@ -966,9 +966,13 @@ void updateServerMigrationFrameOnPacketAckReceived(
     const PacketNum& packetNumber) {
   // The various checks (server migration enabled, protocol negotiated,
   // consistent state, etc.) are performed here when the ack is received,
-  // not when the corresponding frame is sent. They are not strictly necessary
-  // if the functions calling sendServerMigrationFrame() are correct, but
-  // can help in spotting bugs or wrong operations during the migration.
+  // not when the corresponding frame is sent. This is done because:
+  // 1) if there is an error, the client should recognize it and eventually
+  // close the connection due to a protocol violation;
+  // 2) lazily evaluating the correctness of the state allows making
+  // sendServerMigrationFrame() simpler. Moreover, it allows putting the frame
+  // in the output queue without the need to perform the initialization of the
+  // protocol state before calling sendServerMigrationFrame().
   throwIfMigrationIsNotEnabled(
       connectionState,
       "Server migration is disabled",
