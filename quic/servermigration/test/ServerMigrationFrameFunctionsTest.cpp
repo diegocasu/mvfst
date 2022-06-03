@@ -1,9 +1,9 @@
 #include <folly/portability/GTest.h>
 #include <quic/fizz/client/handshake/FizzClientQuicHandshakeContext.h>
 #include <quic/fizz/server/handshake/FizzServerQuicHandshakeContext.h>
+#include <quic/servermigration/DefaultPoolMigrationAddressScheduler.h>
 #include <quic/servermigration/ServerMigrationFrameFunctions.h>
 #include <quic/servermigration/test/Mocks.h>
-#include <quic/servermigration/DefaultPoolMigrationAddressScheduler.h>
 
 using namespace testing;
 
@@ -70,7 +70,6 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
   ASSERT_TRUE(serverState.pendingEvents.frames.empty());
   ServerMigratedFrame frame;
   sendServerMigrationFrame(serverState, frame);
-  EXPECT_FALSE(serverState.pendingEvents.frames.empty());
   EXPECT_EQ(serverState.pendingEvents.frames.size(), 1);
   EXPECT_EQ(
       *serverState.pendingEvents.frames.at(0)
@@ -79,7 +78,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestSendServerMigrationFrame) {
       frame);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfMigrationFrame) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
   EXPECT_THROW(
@@ -101,20 +100,21 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfFrame) {
       QuicTransportException);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolMigrationAddress) {
-  PoolMigrationAddressFrame poolMigrationAddressFrame1(
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddresses) {
+  PoolMigrationAddressFrame firstPoolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  PoolMigrationAddressFrame poolMigrationAddressFrame2(
+  PoolMigrationAddressFrame secondPoolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
       .Times(Exactly(2))
       .WillOnce([&](PoolMigrationAddressFrame frame) {
-        EXPECT_TRUE(frame == poolMigrationAddressFrame1);
+        EXPECT_TRUE(frame == firstPoolMigrationAddressFrame);
       })
       .WillOnce([&](PoolMigrationAddressFrame frame) {
-        EXPECT_TRUE(frame == poolMigrationAddressFrame2);
+        EXPECT_TRUE(frame == secondPoolMigrationAddressFrame);
       });
 
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
@@ -124,21 +124,17 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   enableServerMigrationClientSide();
   doNegotiation();
 
-  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame1, 0, clientState.peerAddress));
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
-  ASSERT_EQ(
-      clientState.serverMigrationState.protocolState->type(),
-      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.protocolState
-          ->asPoolOfAddressesClientState()
-          ->addressScheduler->contains(poolMigrationAddressFrame1.address));
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
 
-  // Test reception of a duplicate.
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame1, 0, clientState.peerAddress));
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      firstPoolMigrationAddressFrame,
+      packetNumber,
+      clientState.peerAddress);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -146,103 +142,381 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedPoolM
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState
           ->asPoolOfAddressesClientState()
-          ->addressScheduler->contains(poolMigrationAddressFrame1.address));
+          ->addressScheduler->contains(firstPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame2, 0, clientState.peerAddress));
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
-  ASSERT_EQ(
-      clientState.serverMigrationState.protocolState->type(),
-      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.protocolState
-          ->asPoolOfAddressesClientState()
-          ->addressScheduler->contains(poolMigrationAddressFrame2.address));
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      secondPoolMigrationAddressFrame,
+      packetNumber,
+      clientState.peerAddress);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesClientState()
+                  ->addressScheduler->contains(
+                      secondPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedPoolMigrationAddress) {
-  PoolMigrationAddressFrame poolMigrationAddressFrameV4(
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressesSpanningMultiplePackets) {
+  PoolMigrationAddressFrame firstPoolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  PoolMigrationAddressFrame poolMigrationAddressFrameV6(
-      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
+  PacketNum firstPacketNumber = 1;
+
+  PoolMigrationAddressFrame secondPoolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  PacketNum secondPacketNumber = 2;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
+      .Times(Exactly(2))
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == firstPoolMigrationAddressFrame);
+      })
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == secondPoolMigrationAddressFrame);
+      });
+
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
-      QuicTransportException);
-
-  // Simulate successful negotiation.
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
 
-  // Test with protocol state not matching the frame type.
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      firstPoolMigrationAddressFrame,
+      firstPacketNumber,
+      clientState.peerAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.protocolState
+          ->asPoolOfAddressesClientState()
+          ->addressScheduler->contains(firstPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      firstPacketNumber);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      secondPoolMigrationAddressFrame,
+      secondPacketNumber,
+      clientState.peerAddress);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesClientState()
+                  ->addressScheduler->contains(
+                      secondPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      secondPacketNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressesSpanningMultipleOutOfOrderPackets) {
+  PoolMigrationAddressFrame firstPoolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum firstPacketNumber = 1;
+
+  PoolMigrationAddressFrame secondPoolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  PacketNum secondPacketNumber = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
+      .Times(Exactly(2))
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == secondPoolMigrationAddressFrame);
+      })
+      .WillOnce([&](PoolMigrationAddressFrame frame) {
+        EXPECT_TRUE(frame == firstPoolMigrationAddressFrame);
+      });
+
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
+  // Out of order reception: first whe receive the packet marked by
+  // "secondPacketNumber", then the packet marked by "firstPacketNumber".
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      secondPoolMigrationAddressFrame,
+      secondPacketNumber,
+      clientState.peerAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
+  EXPECT_TRUE(clientState.serverMigrationState.protocolState
+                  ->asPoolOfAddressesClientState()
+                  ->addressScheduler->contains(
+                      secondPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      secondPacketNumber);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      firstPoolMigrationAddressFrame,
+      firstPacketNumber,
+      clientState.peerAddress);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.protocolState
+          ->asPoolOfAddressesClientState()
+          ->addressScheduler->contains(firstPoolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      secondPacketNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicatePoolMigrationAddress) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  clientState.serverMigrationState.protocolState->asPoolOfAddressesClientState()
+      ->addressScheduler->insert(poolMigrationAddressFrame.address);
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      poolMigrationAddressFrame,
+      packetNumber,
+      clientState.peerAddress);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.protocolState
+          ->asPoolOfAddressesClientState()
+          ->addressScheduler->contains(poolMigrationAddressFrame.address));
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressWithServerMigrationDisabled) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          poolMigrationAddressFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressWithPoolOfAddressesNotNegotiated) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          poolMigrationAddressFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressWhenAnotherProtocolIsInUse) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+
   clientState.serverMigrationState.protocolState = SymmetricClientState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
+          clientState,
+          poolMigrationAddressFrame,
+          packetNumber,
+          clientState.peerAddress),
       QuicTransportException);
-  clientState.serverMigrationState.protocolState.clear();
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::SymmetricClientState);
+}
 
-  // Test with a frame carrying an address of a different family wrt
-  // the one used in the transport socket.
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressWithUnexpectedIPFamily) {
+  PoolMigrationAddressFrame poolMigrationAddressFrameV4(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PoolMigrationAddressFrame poolMigrationAddressFrameV6(
+      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
+
   ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV6, 0, clientState.peerAddress),
+          clientState,
+          poolMigrationAddressFrameV6,
+          packetNumber,
+          clientState.peerAddress),
       QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
 
   clientState.peerAddress = folly::SocketAddress("::1", 1234);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV6());
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
+          clientState,
+          poolMigrationAddressFrameV4,
+          packetNumber,
+          clientState.peerAddress),
       QuicTransportException);
-  clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfPoolMigrationAddressDuringOrAfterAMigration) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
 
   // Test with a migration in progress.
   clientState.serverMigrationState.migrationInProgress = true;
   ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
+          clientState,
+          poolMigrationAddressFrame,
+          packetNumber,
+          clientState.peerAddress),
       QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
 
   // Test with at least one migration completed.
   clientState.serverMigrationState.migrationInProgress = false;
   clientState.serverMigrationState.numberOfMigrations = 1;
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
-          clientState, poolMigrationAddressFrameV4, 0, clientState.peerAddress),
+          clientState,
+          poolMigrationAddressFrame,
+          packetNumber,
+          clientState.peerAddress),
       QuicTransportException);
-  clientState.serverMigrationState.numberOfMigrations = 0;
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolMigrationAddressAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAck) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived)
       .Times(Exactly(1))
-      .WillRepeatedly([&](Unused, PoolMigrationAddressFrame frame) {
+      .WillOnce([&](Unused, PoolMigrationAddressFrame frame) {
         EXPECT_TRUE(frame == poolMigrationAddressFrame);
       });
 
@@ -252,115 +526,197 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedPoolM
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
-  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
 
-  // Test reception of a correct acknowledgement.
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
   auto protocolState = serverState.serverMigrationState.protocolState
                            ->asPoolOfAddressesServerState();
   protocolState->migrationAddresses.insert(
       {poolMigrationAddressFrame.address, false});
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_EQ(protocolState->numberOfReceivedAcks, 0);
-  ASSERT_NE(
-      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address),
-      protocolState->migrationAddresses.end());
-  ASSERT_FALSE(
-      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
-          ->second);
 
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, poolMigrationAddressFrame, 0);
-  EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
-  EXPECT_TRUE(
-      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
-          ->second);
-
-  // Test reception of an acknowledgement for a duplicate.
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, poolMigrationAddressFrame, 1);
+      serverState, poolMigrationAddressFrame, packetNumber);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
   EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
   EXPECT_TRUE(
       protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
           ->second);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedPoolMigrationAddressAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicatePoolMigrationAddressAck) {
   PoolMigrationAddressFrame poolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
   serverState.serverMigrationState.serverMigrationEventCallback = callback;
-  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
 
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame, 0),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame, 1),
-      QuicTransportException);
-
-  // Test reception without a protocol state.
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
-  serverState.serverMigrationState.protocolState.clear();
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame, 2),
-      QuicTransportException);
 
-  // Test reception when there is a protocol state, but the address is unknown.
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame, 3),
-      QuicTransportException);
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesServerState();
+  protocolState->migrationAddresses.insert(
+      {poolMigrationAddressFrame.address, true});
+  protocolState->numberOfReceivedAcks = 1;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
 
-  // Test with protocol state not matching the frame type.
-  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, poolMigrationAddressFrame, packetNumber);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+  EXPECT_EQ(protocolState->numberOfReceivedAcks, 1);
+  EXPECT_TRUE(
+      protocolState->migrationAddresses.find(poolMigrationAddressFrame.address)
+          ->second);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAckWithServerMigrationDisabled) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  serverState.serverMigrationState.protocolState->asPoolOfAddressesServerState()
+      ->migrationAddresses.insert({poolMigrationAddressFrame.address, false});
+
+  ASSERT_FALSE(serverState.serverMigrationState.negotiator);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, poolMigrationAddressFrame, 4),
+          serverState, poolMigrationAddressFrame, packetNumber),
+      QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAckWithPoolOfAddressesNotNegotiated) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  serverState.serverMigrationState.protocolState->asPoolOfAddressesServerState()
+      ->migrationAddresses.insert({poolMigrationAddressFrame.address, false});
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame, packetNumber),
+      QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAckWithoutProtocolState) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(serverState.serverMigrationState.protocolState);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame, packetNumber),
+      QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAckWhenAnotherProtocolIsInUse) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_EQ(
+      serverState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfPoolMigrationAddressAckForUnkownAddress) {
+  PoolMigrationAddressFrame poolMigrationAddressFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onPoolMigrationAddressAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, poolMigrationAddressFrame, packetNumber),
       QuicTransportException);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateServerMigrationFrameOnPacketSent) {
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
-  ASSERT_TRUE(serverState.pendingEvents.frames.empty());
   ServerMigratedFrame frame;
-  sendServerMigrationFrame(serverState, frame);
+  serverState.pendingEvents.frames.push_back(QuicServerMigrationFrame(frame));
   ASSERT_EQ(serverState.pendingEvents.frames.size(), 1);
-  ASSERT_EQ(
-      *serverState.pendingEvents.frames.at(0)
-           .asQuicServerMigrationFrame()
-           ->asServerMigratedFrame(),
-      frame);
-
   updateServerMigrationFrameOnPacketSent(serverState, frame);
   EXPECT_TRUE(serverState.pendingEvents.frames.empty());
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExplicitServerMigration) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigration) {
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationReceived)
@@ -376,9 +732,16 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   enableServerMigrationClientSide();
   doNegotiation();
 
-  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrame, 0, clientState.peerAddress));
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, packetNumber, clientState.peerAddress);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -386,115 +749,282 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedExpli
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
-
-  // Test reception of a duplicate.
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrame, 1, clientState.peerAddress));
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
-  ASSERT_EQ(
-      clientState.serverMigrationState.protocolState->type(),
-      QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
-  protocolState =
-      clientState.serverMigrationState.protocolState->asExplicitClientState();
-  EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedExplicitServerMigration) {
-  ServerMigrationFrame serverMigrationFrameV4(
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateExplicitServerMigration) {
+  ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  ServerMigrationFrame serverMigrationFrameV6(
-      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
+  PacketNum packetNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrameV4, 1, clientState.peerAddress),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrameV4, 2, clientState.peerAddress),
-      QuicTransportException);
-
-  // Simulate successful negotiation.
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
 
-  // Test with protocol state not matching the frame type.
-  clientState.serverMigrationState.protocolState = SymmetricClientState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrameV4, 3, clientState.peerAddress),
-      QuicTransportException);
-  clientState.serverMigrationState.protocolState.clear();
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(serverMigrationFrame.address);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = false;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.serverMigrationState.migrationInProgress = true;
 
-  // Test with a frame carrying an address of a different family wrt
-  // the one used in the transport socket.
   ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrameV6, 4, clientState.peerAddress),
-      QuicTransportException);
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
 
-  clientState.peerAddress = folly::SocketAddress("::1", 1234);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrameV4, 5, clientState.peerAddress),
-      QuicTransportException);
-  clientState.peerAddress = folly::SocketAddress("1.2.3.4", 1234);
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, packetNumber, clientState.peerAddress);
+  EXPECT_EQ(protocolState->migrationAddress, serverMigrationFrame.address);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
 
-  // Test with a frame carrying the current address of the server.
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationWithMigrationDisabled) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           clientState,
-          ServerMigrationFrame(QuicIPAddress(clientState.peerAddress)),
-          6,
+          serverMigrationFrame,
+          packetNumber,
           clientState.peerAddress),
       QuicTransportException);
-  Mock::VerifyAndClearExpectations(callback.get());
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
 
-  // Test reception of multiple frames with different addresses.
-  EXPECT_CALL(*callback, onServerMigrationReceived)
-      .Times(Exactly(1))
-      .WillOnce([&](ServerMigrationFrame frame) {
-        EXPECT_TRUE(frame == serverMigrationFrameV4);
-      });
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrameV4, 7, clientState.peerAddress));
-  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationWithExplicitNotNegotiated) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           clientState,
-          ServerMigrationFrame(
-              QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 6000)),
-          8,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationWhenAnotherProtocolIsInUse) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::SymmetricClientState);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationWithUnexpectedIPFamily) {
+  ServerMigrationFrame serverMigrationFrameV6(
+      QuicIPAddress(folly::IPAddressV6("::1"), 5001));
+  PacketNum packetNumberV6 = 1;
+
+  ServerMigrationFrame serverMigrationFrameV4(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumberV4 = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      serverMigrationFrameV4.address.getIPv4AddressAsSocketAddress());
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrameV6,
+          packetNumberV6,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+
+  clientState.peerAddress = folly::SocketAddress("::1", 1234);
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV6());
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrameV4,
+          packetNumberV4,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationCarryingCurrentAddressOfTheServer) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(clientState.peerAddress));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfMultipleExplicitServerMigrationCarryingDifferentAddresses) {
+  ServerMigrationFrame firstServerMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  ServerMigrationFrame secondServerMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5000));
+  PacketNum secondPacketNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_TRUE(clientState.peerAddress.getIPAddress().isV4());
+  ASSERT_NE(
+      clientState.peerAddress,
+      firstServerMigrationFrame.address.getIPv4AddressAsSocketAddress());
+  ASSERT_NE(
+      clientState.peerAddress,
+      secondServerMigrationFrame.address.getIPv4AddressAsSocketAddress());
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(firstServerMigrationFrame.address);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = false;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      secondPacketNumber - 1;
+  clientState.serverMigrationState.migrationInProgress = true;
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          secondServerMigrationFrame,
+          secondPacketNumber,
           clientState.peerAddress),
       QuicTransportException);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedExplicitServerMigrationAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAck) {
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationAckReceived)
@@ -510,84 +1040,199 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedExpli
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
+
   serverState.serverMigrationState.protocolState =
       ExplicitServerState(serverMigrationFrame.address);
-
-  // Test reception of a correct acknowledgement.
   auto protocolState =
       serverState.serverMigrationState.protocolState->asExplicitServerState();
   ASSERT_FALSE(protocolState->migrationAcknowledged);
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame, 0);
-  EXPECT_TRUE(protocolState->migrationAcknowledged);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
 
-  // Test reception of an acknowledgement for a duplicate.
-  ASSERT_TRUE(protocolState->migrationAcknowledged);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame, 1);
+      serverState, serverMigrationFrame, packetNumber);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedExplicitServerMigrationAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateExplicitServerMigrationAck) {
   ServerMigrationFrame serverMigrationFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
   EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
   serverState.serverMigrationState.serverMigrationEventCallback = callback;
-  serverState.serverMigrationState.protocolState =
-      ExplicitServerState(serverMigrationFrame.address);
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 0),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 1),
-      QuicTransportException);
-
-  // Test reception without a protocol state.
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
-  serverState.serverMigrationState.protocolState.clear();
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 2),
-      QuicTransportException);
 
-  // Test reception when there is a protocol state, but the address does not
-  // match.
   serverState.serverMigrationState.protocolState =
-      ExplicitServerState(QuicIPAddress(folly::IPAddressV4("127.1.1.1"), 5050));
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 3),
-      QuicTransportException);
+      ExplicitServerState(serverMigrationFrame.address);
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asExplicitServerState();
+  protocolState->migrationAcknowledged = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
 
-  // Test with protocol state not matching the frame type.
-  serverState.serverMigrationState.protocolState = SymmetricServerState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 4),
-      QuicTransportException);
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame, packetNumber);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynchronizedSymmetricServerMigration) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAckWithMigrationDisabled) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverState.serverMigrationState.protocolState =
+      ExplicitServerState(serverMigrationFrame.address);
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asExplicitServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.negotiator);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAckWithExplicitNotNegotiated) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      ExplicitServerState(serverMigrationFrame.address);
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asExplicitServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAckWithoutProtocolState) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(serverState.serverMigrationState.protocolState);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(serverState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAckWhenAnotherProtocolIsInUse) {
+  ServerMigrationFrame serverMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_EQ(
+      serverState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExplicitServerMigrationAckForWrongAddress) {
+  ServerMigrationFrame originalServerMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
+  ServerMigrationFrame wrongServerMigrationFrame(
+      QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      ExplicitServerState(originalServerMigrationFrame.address);
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asExplicitServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, wrongServerMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigration) {
   QuicIPAddress emptyAddress;
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationReceived)
@@ -605,53 +1250,36 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynch
   enableServerMigrationClientSide();
   doNegotiation();
 
-  ASSERT_TRUE(!clientState.serverMigrationState.protocolState);
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrame, 0, clientState.peerAddress));
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
-  ASSERT_EQ(
-      clientState.serverMigrationState.protocolState->type(),
-      QuicServerMigrationProtocolClientState::Type::
-          SynchronizedSymmetricClientState);
-  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
 
-  // Test reception of a duplicate.
-  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigrationFrame, 1, clientState.peerAddress));
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigrationFrame, packetNumber, clientState.peerAddress);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState.has_value());
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
       QuicServerMigrationProtocolClientState::Type::
           SynchronizedSymmetricClientState);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSynchronizedSymmetricServerMigration) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSynchronizedSymmetricServerMigration) {
   QuicIPAddress emptyAddress;
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrame, 1, clientState.peerAddress),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrame, 2, clientState.peerAddress),
-      QuicTransportException);
-
-  // Simulate successful negotiation.
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   clientSupportedProtocols.insert(
@@ -660,323 +1288,639 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSyn
   enableServerMigrationClientSide();
   doNegotiation();
 
-  // Test with protocol state not matching the frame type.
-  clientState.serverMigrationState.protocolState = SymmetricClientState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigrationFrame, 3, clientState.peerAddress),
-      QuicTransportException);
-  clientState.serverMigrationState.protocolState.clear();
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynchronizedSymmetricServerMigrationAck) {
-  QuicIPAddress emptyAddress;
-  ServerMigrationFrame serverMigrationFrame(emptyAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigrationAckReceived)
-      .Times(Exactly(1))
-      .WillOnce([&](Unused, ServerMigrationFrame frame) {
-        EXPECT_TRUE(frame == serverMigrationFrame);
-      });
-  EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
-
-  serverState.serverMigrationState.serverMigrationEventCallback = callback;
-  serverSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  clientSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  serverState.serverMigrationState.protocolState =
-      SynchronizedSymmetricServerState();
-
-  // Test reception of a correct acknowledgement.
-  auto protocolState = serverState.serverMigrationState.protocolState
-                           ->asSynchronizedSymmetricServerState();
-  ASSERT_FALSE(protocolState->migrationAcknowledged);
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame, 0);
-  EXPECT_TRUE(protocolState->migrationAcknowledged);
-
-  // Test reception of an acknowledgement for a duplicate.
-  ASSERT_TRUE(protocolState->migrationAcknowledged);
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigrationFrame, 1);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigrationAck) {
-  QuicIPAddress emptyAddress;
-  ServerMigrationFrame serverMigrationFrame(emptyAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
-  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
-  serverState.serverMigrationState.serverMigrationEventCallback = callback;
-  serverState.serverMigrationState.protocolState =
-      SynchronizedSymmetricServerState();
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 0),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 1),
-      QuicTransportException);
-
-  // Test reception without a protocol state.
-  serverSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  clientSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  serverState.serverMigrationState.protocolState.clear();
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 2),
-      QuicTransportException);
-
-  // Test with protocol state not matching the frame type.
-  serverState.serverMigrationState.protocolState = SymmetricServerState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigrationFrame, 3),
-      QuicTransportException);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSymmetricServerMigrated) {
-  ServerMigratedFrame serverMigratedFrame;
-  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 1, serverNewAddress),
-      QuicTransportException);
-
-  // Test with frame type belonging to a not negotiated protocol.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 2, serverNewAddress),
-      QuicTransportException);
-
-  // Simulate successful negotiation.
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
-  // Test with protocol state not matching the frame type.
-  clientState.serverMigrationState.protocolState =
-      ExplicitClientState(QuicIPAddress(serverNewAddress));
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 3, serverNewAddress),
-      QuicTransportException);
-  clientState.serverMigrationState.protocolState.clear();
-
-  // Test reception from the current peer address.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 4, clientState.peerAddress),
-      QuicTransportException);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSymmetricServerMigrated) {
-  ServerMigratedFrame serverMigratedFrame;
-  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
-  // Test when no protocol state is present.
-  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
-  updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigratedFrame, 0, serverNewAddress);
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
-  ASSERT_TRUE(
-      clientState.serverMigrationState.protocolState->asSymmetricClientState());
-  auto protocolState =
-      clientState.serverMigrationState.protocolState->asSymmetricClientState();
-  EXPECT_TRUE(protocolState->callbackNotified);
-  EXPECT_FALSE(protocolState->pathValidationStarted);
-
-  // Test when state is already present and callback already notified.
-  ASSERT_TRUE(protocolState->callbackNotified);
-  updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigratedFrame, 1, serverNewAddress);
-  EXPECT_TRUE(protocolState->callbackNotified);
-  EXPECT_FALSE(protocolState->pathValidationStarted);
-  Mock::VerifyAndClearExpectations(callback.get());
-
-  // Test when state is present, but the callback has not been notified yet.
-  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
-  protocolState->callbackNotified = false;
-  updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigratedFrame, 2, serverNewAddress);
-  EXPECT_TRUE(protocolState->callbackNotified);
-  EXPECT_FALSE(protocolState->pathValidationStarted);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfUnexpectedSynchronizedSymmetricServerMigrated) {
-  ServerMigratedFrame serverMigratedFrame;
-  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 1, serverNewAddress),
-      QuicTransportException);
-
-  // Simulate successful negotiation.
-  serverSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  clientSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
-  // Test with protocol state not matching the frame type.
-  clientState.serverMigrationState.protocolState =
-      ExplicitClientState(QuicIPAddress(serverNewAddress));
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 2, serverNewAddress),
-      QuicTransportException);
-  clientState.serverMigrationState.protocolState.clear();
-
-  // Test reception from the current peer address.
-  clientState.serverMigrationState.protocolState =
-      SynchronizedSymmetricClientState();
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketReceived(
-          clientState, serverMigratedFrame, 3, clientState.peerAddress),
-      QuicTransportException);
-}
-
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExpectedSynchronizedSymmetricServerMigrated) {
-  ServerMigratedFrame serverMigratedFrame;
-  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
-
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  serverSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  clientSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  enableServerMigrationServerSide();
-  enableServerMigrationClientSide();
-  doNegotiation();
-
-  // Test when state is present, but the callback has not been notified yet.
   clientState.serverMigrationState.protocolState =
       SynchronizedSymmetricClientState();
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricClientState();
-  ASSERT_FALSE(protocolState->callbackNotified);
-  updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigratedFrame, 0, serverNewAddress);
-  EXPECT_TRUE(protocolState->callbackNotified);
-  EXPECT_FALSE(protocolState->pathValidationStarted);
+  protocolState->callbackNotified = false;
+  protocolState->pathValidationStarted = false;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.serverMigrationState.migrationInProgress = true;
 
-  // Test when state is already present and callback already notified.
-  ASSERT_TRUE(protocolState->callbackNotified);
   updateServerMigrationFrameOnPacketReceived(
-      clientState, serverMigratedFrame, 1, serverNewAddress);
-  EXPECT_TRUE(protocolState->callbackNotified);
+      clientState, serverMigrationFrame, packetNumber, clientState.peerAddress);
+  EXPECT_FALSE(protocolState->callbackNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSymmetricServerMigratedAck) {
-  ServerMigratedFrame serverMigratedFrame;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigrationWithMigrationDisabled) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 0),
-      QuicTransportException);
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
 
-  // Test with frame type belonging to a not negotiated protocol.
-  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigrationWithSynchronizedSymmetricNotNegotiated) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigrationWhenAnotherProtocolIsInUse) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigrationFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAck) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ServerMigrationFrame frame) {
+        EXPECT_TRUE(frame == serverMigrationFrame);
+      });
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(Exactly(1));
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame, packetNumber);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateSynchronizedSymmetricServerMigrationAck) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = true;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigrationFrame, packetNumber);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWithMigrationDisabled) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.negotiator);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 1),
+          serverState, serverMigrationFrame, packetNumber),
       QuicTransportException);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+  EXPECT_FALSE(protocolState->callbackNotified);
+}
 
-  // Test reception without a protocol state.
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWithSynchronizedSymmetricNotNegotiated) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
-  serverState.serverMigrationState.protocolState.clear();
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 2),
-      QuicTransportException);
 
-  // Test with protocol state not matching the frame type.
-  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->migrationAcknowledged);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 3),
+          serverState, serverMigrationFrame, packetNumber),
       QuicTransportException);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+  EXPECT_FALSE(protocolState->callbackNotified);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSymmetricServerMigratedAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWithoutProtocolState) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(serverState.serverMigrationState.protocolState);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(serverState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWhenAnotherProtocolIsInUse) {
+  QuicIPAddress emptyAddress;
+  ServerMigrationFrame serverMigrationFrame(emptyAddress);
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationAckReceived).Times(0);
+  EXPECT_CALL(*callback, onServerMigrationReady).Times(0);
+
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigrationFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_EQ(
+      serverState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::SymmetricServerState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServerMigrated) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, packetNumber, serverNewAddress);
+  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
+  ASSERT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::SymmetricClientState);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asSymmetricClientState();
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSymmetricServerMigrated) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asSymmetricClientState();
+  protocolState->callbackNotified = true;
+  protocolState->pathValidationStarted = false;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, packetNumber, serverNewAddress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServerMigratedWithMigrationDisabled) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigratedFrame, packetNumber, serverNewAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServerMigratedWithSymmetricNotNegotiated) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigratedFrame, packetNumber, serverNewAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServerMigratedWhenAnotherProtocolIsInUse) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigratedFrame, packetNumber, serverNewAddress),
+      QuicTransportException);
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::PoolOfAddressesClientState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServerMigratedFromCurrentPeerAddress) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigratedFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigrated) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->pathValidationStarted);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, packetNumber, serverNewAddress);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSynchronizedSymmetricServerMigrated) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  protocolState->callbackNotified = true;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(protocolState->pathValidationStarted);
+
+  updateServerMigrationFrameOnPacketReceived(
+      clientState, serverMigratedFrame, packetNumber, serverNewAddress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigratedWithMigrationDisabled) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->pathValidationStarted);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigratedFrame, packetNumber, serverNewAddress),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigratedWhenAnotherProtocolIsInUse) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(QuicIPAddress(serverNewAddress));
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState, serverMigratedFrame, packetNumber, serverNewAddress),
+      QuicTransportException);
+  EXPECT_EQ(
+      clientState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolClientState::Type::ExplicitClientState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedSymmetricServerMigratedFromCurrentPeerAddress) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->pathValidationStarted);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketReceived(
+          clientState,
+          serverMigratedFrame,
+          packetNumber,
+          clientState.peerAddress),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->pathValidationStarted);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(Exactly(1));
   serverState.serverMigrationState.serverMigrationEventCallback = callback;
@@ -991,82 +1935,152 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSymme
   auto protocolState =
       serverState.serverMigrationState.protocolState->asSymmetricServerState();
 
-  // Test when callback not already notified.
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_FALSE(protocolState->callbackNotified);
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigratedFrame, 0);
-  EXPECT_TRUE(protocolState->callbackNotified);
 
-  // Test when callback already notified.
-  ASSERT_TRUE(protocolState->callbackNotified);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigratedFrame, 1);
+      serverState, serverMigratedFrame, packetNumber);
   EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfUnexpectedSynchronizedSymmetricServerMigratedAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateSymmetricServerMigratedAck) {
   ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
 
-  // Test with server migration disabled.
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asSymmetricServerState();
+  protocolState->callbackNotified = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, packetNumber);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAckWithMigrationDisabled) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asSymmetricServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.negotiator);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 0),
+          serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+}
 
-  // Test with frame type belonging to a not negotiated protocol.
-  serverState.serverMigrationState.protocolState =
-      SynchronizedSymmetricServerState();
-  serverState.serverMigrationState.protocolState
-      ->asSynchronizedSymmetricServerState()
-      ->migrationAcknowledged = true;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAckWithSymmetricNotNegotiated) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
   serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
+
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  auto protocolState =
+      serverState.serverMigrationState.protocolState->asSymmetricServerState();
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 1),
+          serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+}
 
-  // Test with SERVER_MIGRATION not acknowledged.
-  serverSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
-  clientSupportedProtocols.insert(
-      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAckWithoutProtocolState) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
-  serverState.serverMigrationState.protocolState
-      ->asSynchronizedSymmetricServerState()
-      ->migrationAcknowledged = false;
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 2),
-      QuicTransportException);
 
-  // Test reception without a protocol state.
-  serverState.serverMigrationState.protocolState.clear();
-  ASSERT_TRUE(!serverState.serverMigrationState.protocolState);
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 3),
-      QuicTransportException);
+  ASSERT_FALSE(serverState.serverMigrationState.protocolState);
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
 
-  // Test with protocol state not matching the frame type.
-  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, 4),
+          serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
+  EXPECT_FALSE(serverState.serverMigrationState.protocolState);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynchronizedSymmetricServerMigratedAck) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAckWhenAnotherProtocolIsInUse) {
   ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 0;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_EQ(
+      serverState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(Exactly(1));
   serverState.serverMigrationState.serverMigrationEventCallback = callback;
@@ -1084,22 +2098,207 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfExpectedSynch
   auto protocolState = serverState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricServerState();
   protocolState->migrationAcknowledged = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
 
-  // Test when callback not already notified.
   ASSERT_FALSE(protocolState->callbackNotified);
-  updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigratedFrame, 0);
-  EXPECT_TRUE(protocolState->callbackNotified);
 
-  // Test when callback already notified.
-  ASSERT_TRUE(protocolState->callbackNotified);
   updateServerMigrationFrameOnPacketAckReceived(
-      serverState, serverMigratedFrame, 1);
+      serverState, serverMigratedFrame, packetNumber);
   EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbing) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateSynchronizedSymmetricServerMigratedAck) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = true;
+  protocolState->callbackNotified = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, packetNumber);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAckWithMigrationDisabled) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_FALSE(serverState.serverMigrationState.negotiator);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber - 1);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAckWithSynchronizedSymmetricNotNegotiated) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::POOL_OF_ADDRESSES);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  ASSERT_FALSE(protocolState->callbackNotified);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAckWithoutProtocolState) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  ASSERT_FALSE(serverState.serverMigrationState.protocolState);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(serverState.serverMigrationState.protocolState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAckWhenAnotherProtocolIsInUse) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_EQ(
+      serverState.serverMigrationState.protocolState->type(),
+      QuicServerMigrationProtocolServerState::Type::PoolOfAddressesServerState);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigratedAckWhenMigrationNotAcknowledged) {
+  ServerMigratedFrame serverMigratedFrame;
+  PacketNum packetNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedAckReceived).Times(0);
+  serverState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  serverState.serverMigrationState.protocolState =
+      SynchronizedSymmetricServerState();
+  auto protocolState = serverState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricServerState();
+  protocolState->migrationAcknowledged = false;
+
+  ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(protocolState->callbackNotified);
+
+  EXPECT_THROW(
+      updateServerMigrationFrameOnPacketAckReceived(
+          serverState, serverMigratedFrame, packetNumber),
+      QuicTransportException);
+  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->migrationAcknowledged);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationProbingStarted)
       .Times(Exactly(1))
@@ -1109,47 +2308,39 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
         EXPECT_EQ(
             probingAddress, migrationAddress.getIPv4AddressAsSocketAddress());
       });
-
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
-  auto peerAddressBeforeProbing = clientState.peerAddress;
 
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
       clientState.peerAddress);
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
   ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
   ASSERT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
-  // Test when the probing is finished.
-  protocolState->probingFinished = true;
-  maybeUpdateServerMigrationProbing(clientState);
-  EXPECT_NE(
-      clientState.peerAddress,
-      migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
-  EXPECT_FALSE(protocolState->callbackNotified);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
-  protocolState->probingFinished = false;
-
-  // Test start of the probing.
   maybeUpdateServerMigrationProbing(clientState);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_EQ(
       protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
-  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
@@ -1157,120 +2348,395 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   EXPECT_EQ(clientState.lossState.lrtt, 0us);
   EXPECT_EQ(clientState.lossState.rttvar, 0us);
   EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
+}
 
-  // Test with probing already in progress.
-  ASSERT_TRUE(protocolState->probingInProgress);
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbingWhenProbingInProgress) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  protocolState->callbackNotified = true;
+  protocolState->probingFinished = false;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+
   maybeUpdateServerMigrationProbing(clientState);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_EQ(
       protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
-  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 100us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbing) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbingWhenProbingAlreadyFinished) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
-  protocolState->probingInProgress = true;
-  protocolState->serverAddressBeforeProbing = clientState.peerAddress;
+  protocolState->probingInProgress = false;
+  protocolState->callbackNotified = true;
+  protocolState->probingFinished = true;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  clientState.pendingEvents.pathChallenge = quic::PathChallengeFrame(pathData);
+  clientState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          clientState.udpSendPacketLen);
 
   ASSERT_NE(
       migrationAddress.getIPv4AddressAsSocketAddress(),
-      clientState.peerAddress);
-  ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_TRUE(protocolState->probingInProgress);
-  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
-  ASSERT_FALSE(clientState.pathValidationLimiter);
+      peerAddressBeforeProbing);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
 
-  // Test end probing with peer address not matching the
-  // expected one or the peer address before probing.
-  folly::SocketAddress badPeerAddress("127.1.1.10", 12345);
-  ASSERT_NE(badPeerAddress, migrationAddress.getIPv4AddressAsSocketAddress());
-  ASSERT_NE(badPeerAddress, protocolState->serverAddressBeforeProbing);
-  maybeEndServerMigrationProbing(clientState, badPeerAddress);
-  EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->probingInProgress);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
-
-  // Test attempt to end probing when probing is already finished.
-  protocolState->probingInProgress = false;
-  protocolState->probingFinished = true;
-  maybeEndServerMigrationProbing(
-      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
+  maybeUpdateServerMigrationProbing(clientState);
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(protocolState->probingFinished);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
-  protocolState->probingInProgress = true;
-  protocolState->probingFinished = false;
-
-  // Test correct probing ending.
-  maybeEndServerMigrationProbing(
-      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 100us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbingWithAddressBeforeProbing) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbingReceivingFrameFromServerAddressBeforeProbing) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+  CongestionAndRttState previousCongestionAndRttState;
+  previousCongestionAndRttState.congestionController =
+      congestionControllerFactory.makeCongestionController(
+          clientState,
+          clientState.transportSettings.defaultCongestionController);
+  previousCongestionAndRttState.srtt = 1us;
+  previousCongestionAndRttState.lrtt = 2us;
+  previousCongestionAndRttState.rttvar = 3us;
+  previousCongestionAndRttState.mrtt = 4us;
+
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
-
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
   protocolState->probingFinished = false;
-  protocolState->serverAddressBeforeProbing = clientState.peerAddress;
   protocolState->callbackNotified = true;
-  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
-      CongestionAndRttState());
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
 
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_FALSE(
+      previousCongestionAndRttState.congestionController->isAppLimited());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      std::move(previousCongestionAndRttState));
 
-  auto peerAddressBeforeProbing = protocolState->serverAddressBeforeProbing;
   maybeEndServerMigrationProbing(
       clientState, protocolState->serverAddressBeforeProbing);
+  EXPECT_EQ(clientState.peerAddress, peerAddressBeforeProbing);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
-  EXPECT_EQ(clientState.peerAddress, peerAddressBeforeProbing);
+  EXPECT_TRUE(protocolState->callbackNotified);
   EXPECT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_EQ(clientState.lossState.srtt, 1us);
+  EXPECT_EQ(clientState.lossState.lrtt, 2us);
+  EXPECT_EQ(clientState.lossState.rttvar, 3us);
+  EXPECT_EQ(clientState.lossState.mrtt, 4us);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
   EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
   EXPECT_FALSE(clientState.pathValidationLimiter);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMigrationProbing) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbingReceivingFrameFromNewServerAddress) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  protocolState->probingFinished = false;
+  protocolState->callbackNotified = true;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  maybeEndServerMigrationProbing(
+      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 100us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProbingReceivingFrameFromUnkownServerAddress) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+  folly::SocketAddress unknownPeerAddress("127.1.1.10", 12345);
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  protocolState->probingFinished = false;
+  protocolState->callbackNotified = true;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  ASSERT_NE(
+      unknownPeerAddress, migrationAddress.getIPv4AddressAsSocketAddress());
+  ASSERT_NE(unknownPeerAddress, peerAddressBeforeProbing);
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  maybeEndServerMigrationProbing(clientState, unknownPeerAddress);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 100us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestAttemptToEndExplicitServerMigrationProbingWhenProbingAlreadyFinished) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = true;
+  protocolState->callbackNotified = true;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  clientState.pendingEvents.pathChallenge = quic::PathChallengeFrame(pathData);
+  clientState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          clientState.udpSendPacketLen);
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+
+  maybeEndServerMigrationProbing(
+      clientState, migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_EQ(
+      clientState.peerAddress,
+      migrationAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_EQ(
+      protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 100us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartPoolOfAddressesServerMigrationProbing) {
   QuicIPAddress poolAddress(folly::IPAddressV4("1.1.1.1"), 1111);
   auto currentServerAddress = clientState.peerAddress;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted)
+      .Times(Exactly(1))
+      .WillOnce([&](ServerMigrationProtocol protocol,
+                    folly::SocketAddress probingAddress) {
+        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
+        EXPECT_EQ(probingAddress, currentServerAddress);
+      });
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   poolMigrationAddressScheduler->insert(poolAddress);
   clientState.serverMigrationState.protocolState =
       PoolOfAddressesClientState(poolMigrationAddressScheduler);
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asPoolOfAddressesClientState();
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
+  ASSERT_NE(
+      clientState.peerAddress, poolAddress.getIPv4AddressAsSocketAddress());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
+  ASSERT_FALSE(protocolState->probingInProgress);
+  ASSERT_FALSE(protocolState->probingFinished);
+  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_EQ(
+      poolMigrationAddressScheduler->getCurrentServerAddress(),
+      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
+  EXPECT_TRUE(protocolState->probingInProgress);
+  EXPECT_FALSE(protocolState->probingFinished);
+  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMigrationProbing) {
+  QuicIPAddress poolAddress(folly::IPAddressV4("1.1.1.1"), 1111);
+  auto currentServerAddress = clientState.peerAddress;
+
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationProbingStarted)
-      .Times(Exactly(2))
-      .WillOnce([&](ServerMigrationProtocol protocol,
-                    folly::SocketAddress probingAddress) {
-        EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
-        EXPECT_EQ(probingAddress, currentServerAddress);
-      })
+      .Times(Exactly(1))
       .WillOnce([&](ServerMigrationProtocol protocol,
                     folly::SocketAddress probingAddress) {
         EXPECT_EQ(protocol, ServerMigrationProtocol::POOL_OF_ADDRESSES);
@@ -1278,56 +2744,34 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMig
       });
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
-  ASSERT_TRUE(
-      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
-  ASSERT_NE(
-      clientState.peerAddress, poolAddress.getIPv4AddressAsSocketAddress());
-  ASSERT_FALSE(protocolState->probingInProgress);
-  ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
-  ASSERT_TRUE(
-      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  poolMigrationAddressScheduler->setCurrentServerAddress(
+      QuicIPAddress(currentServerAddress));
+  poolMigrationAddressScheduler->insert(poolAddress);
 
-  // Test when the probing is finished.
-  protocolState->probingFinished = true;
-  maybeUpdateServerMigrationProbing(clientState);
-  EXPECT_TRUE(
-      poolMigrationAddressScheduler->getCurrentServerAddress().isAllZero());
-  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
-  EXPECT_FALSE(protocolState->probingInProgress);
-  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
-  EXPECT_TRUE(
-      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  // Simulate one address already cycled (the original one of the server).
+  poolMigrationAddressScheduler->next();
+  clientState.peerAddress = currentServerAddress;
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = currentServerAddress;
+  protocolState->probingInProgress = true;
   protocolState->probingFinished = false;
 
-  // Test start of the probing.
-  maybeUpdateServerMigrationProbing(clientState);
-  EXPECT_EQ(
-      poolMigrationAddressScheduler->getCurrentServerAddress(),
-      QuicIPAddress(currentServerAddress));
-  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
-  EXPECT_TRUE(protocolState->probingInProgress);
-  EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_EQ(clientState.peerAddress, currentServerAddress);
-  EXPECT_EQ(
-      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
-      1);
-  EXPECT_EQ(clientState.lossState.srtt, 0us);
-  EXPECT_EQ(clientState.lossState.lrtt, 0us);
-  EXPECT_EQ(clientState.lossState.rttvar, 0us);
-  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
   clientState.lossState.srtt = 10us;
-  clientState.lossState.lrtt = 10us;
-  clientState.lossState.rttvar = 10us;
-  clientState.lossState.mrtt = kDefaultInitialRtt;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
 
-  // Test with probing already in progress.
-  ASSERT_TRUE(protocolState->probingInProgress);
+  ASSERT_NE(currentServerAddress, poolAddress.getIPv4AddressAsSocketAddress());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+
   maybeUpdateServerMigrationProbing(clientState);
-  EXPECT_EQ(
-      poolMigrationAddressScheduler->getCurrentServerAddress(),
-      QuicIPAddress(currentServerAddress));
-  EXPECT_EQ(protocolState->serverAddressBeforeProbing, currentServerAddress);
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_EQ(
@@ -1339,22 +2783,85 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMig
   EXPECT_EQ(clientState.lossState.lrtt, 0us);
   EXPECT_EQ(clientState.lossState.rttvar, 0us);
   EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdatePoolOfAddressesServerMigrationProbingWhenProbingAlreadyFinished) {
+  QuicIPAddress poolAddress(folly::IPAddressV4("1.1.1.1"), 1111);
+  auto currentServerAddress = clientState.peerAddress;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationProbingStarted).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
+  clientState.peerAddress = poolAddress.getIPv4AddressAsSocketAddress();
+  clientState.serverMigrationState.migrationInProgress = true;
+
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = folly::SocketAddress();
+  protocolState->probingInProgress = false;
+  protocolState->probingFinished = true;
+  protocolState->addressScheduler->insert(poolAddress);
+  protocolState->addressScheduler->setCurrentServerAddress(
+      quic::QuicIPAddress());
+  protocolState->addressScheduler->restart();
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+
+  uint64_t pathData;
+  folly::Random::secureRandom(&pathData, sizeof(pathData));
+  clientState.pendingEvents.pathChallenge = quic::PathChallengeFrame(pathData);
+  clientState.pathValidationLimiter =
+      std::make_unique<quic::PendingPathRateLimiter>(
+          clientState.udpSendPacketLen);
+
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+
+  maybeUpdateServerMigrationProbing(clientState);
+  EXPECT_EQ(
+      clientState.peerAddress, poolAddress.getIPv4AddressAsSocketAddress());
+  EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(protocolState->probingInProgress);
+  EXPECT_TRUE(protocolState->probingFinished);
+  EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
+  EXPECT_TRUE(clientState.pathValidationLimiter);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceivePoolMigrationAddressDuringServerMigrationProbing) {
-  PoolMigrationAddressFrame poolMigrationAddressFrame1(
+  PoolMigrationAddressFrame firstPoolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.1"), 5000));
-  PoolMigrationAddressFrame poolMigrationAddressFrame2(
+  PacketNum firstPacketNumber = 0;
+
+  PoolMigrationAddressFrame secondPoolMigrationAddressFrame(
       QuicIPAddress(folly::IPAddressV4("127.0.0.2"), 5001));
+  PacketNum secondPacketNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onPoolMigrationAddressReceived)
       .Times(Exactly(2))
       .WillOnce([&](PoolMigrationAddressFrame frame) {
-        EXPECT_TRUE(frame == poolMigrationAddressFrame1);
+        EXPECT_TRUE(frame == firstPoolMigrationAddressFrame);
       })
       .WillOnce([&](PoolMigrationAddressFrame frame) {
-        EXPECT_TRUE(frame == poolMigrationAddressFrame2);
+        EXPECT_TRUE(frame == secondPoolMigrationAddressFrame);
       });
   clientState.serverMigrationState.serverMigrationEventCallback = callback;
 
@@ -1366,7 +2873,10 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceivePoolMigrationAddressDur
 
   // Simulate reception of first pool migration address.
   updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame1, 0, clientState.peerAddress);
+      clientState,
+      firstPoolMigrationAddressFrame,
+      firstPacketNumber,
+      clientState.peerAddress);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState);
   ASSERT_EQ(
       clientState.serverMigrationState.protocolState->type(),
@@ -1374,7 +2884,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceivePoolMigrationAddressDur
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asPoolOfAddressesClientState();
   ASSERT_TRUE(protocolState->addressScheduler->contains(
-      poolMigrationAddressFrame1.address));
+      firstPoolMigrationAddressFrame.address));
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
 
@@ -1386,19 +2896,23 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceivePoolMigrationAddressDur
 
   // Reception of the second pool migration address.
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, poolMigrationAddressFrame2, 1, clientState.peerAddress));
+      clientState,
+      secondPoolMigrationAddressFrame,
+      secondPacketNumber,
+      clientState.peerAddress));
   EXPECT_TRUE(protocolState->addressScheduler->contains(
-      poolMigrationAddressFrame2.address));
+      secondPoolMigrationAddressFrame.address));
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
   EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenNoProbingInProgress) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestAttemptToEndPoolOfAddressesProbingWhenProbingAlreadyFinished) {
   QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
   QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
   QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
   auto currentServerAddress = clientState.peerAddress;
+
   poolMigrationAddressScheduler->setCurrentServerAddress(
       QuicIPAddress(currentServerAddress));
   poolMigrationAddressScheduler->insert(poolAddress1);
@@ -1409,20 +2923,23 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenN
   clientState.peerAddress =
       poolMigrationAddressScheduler->next()
           .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
-  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
-      CongestionAndRttState());
-  clientState.serverMigrationState.migrationInProgress = false;
+
   clientState.serverMigrationState.protocolState =
       PoolOfAddressesClientState(poolMigrationAddressScheduler);
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asPoolOfAddressesClientState();
   protocolState->serverAddressBeforeProbing = currentServerAddress;
+  protocolState->probingFinished = true;
+  protocolState->probingInProgress = true;
+
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.serverMigrationState.migrationInProgress = false;
+
   ASSERT_NE(currentServerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
   ASSERT_FALSE(clientState.pathValidationLimiter);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
 
-  protocolState->probingFinished = true;
-  protocolState->probingInProgress = true;
   maybeEndServerMigrationProbing(
       clientState, poolAddress1.getIPv4AddressAsSocketAddress());
   EXPECT_EQ(
@@ -1440,9 +2957,41 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenN
   EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
   EXPECT_FALSE(clientState.pathValidationLimiter);
+}
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestAttemptToEndPoolOfAddressesProbingWhenNoProbingInProgress) {
+  QuicIPAddress poolAddress1(folly::IPAddressV4("1.1.1.1"), 1111);
+  QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
+  QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
+  auto currentServerAddress = clientState.peerAddress;
+
+  poolMigrationAddressScheduler->setCurrentServerAddress(
+      QuicIPAddress(currentServerAddress));
+  poolMigrationAddressScheduler->insert(poolAddress1);
+  poolMigrationAddressScheduler->insert(poolAddress2);
+  poolMigrationAddressScheduler->insert(poolAddress3);
+  poolMigrationAddressScheduler->next(); // Returns currentServerAddress
+  poolMigrationAddressScheduler->next(); // Returns poolAddress1
+  clientState.peerAddress =
+      poolMigrationAddressScheduler->next()
+          .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
+
+  clientState.serverMigrationState.protocolState =
+      PoolOfAddressesClientState(poolMigrationAddressScheduler);
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asPoolOfAddressesClientState();
+  protocolState->serverAddressBeforeProbing = currentServerAddress;
   protocolState->probingFinished = false;
   protocolState->probingInProgress = false;
+
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.serverMigrationState.migrationInProgress = false;
+
+  ASSERT_NE(currentServerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+
   maybeEndServerMigrationProbing(
       clientState, poolAddress1.getIPv4AddressAsSocketAddress());
   EXPECT_EQ(
@@ -1453,9 +3002,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWhenN
   EXPECT_EQ(
       poolMigrationAddressScheduler->getCurrentServerAddress(),
       QuicIPAddress(currentServerAddress));
-  EXPECT_EQ(
-      poolMigrationAddressScheduler->next(),
-      QuicIPAddress(currentServerAddress));
+  EXPECT_EQ(poolMigrationAddressScheduler->next(), poolAddress3);
   EXPECT_EQ(
       clientState.serverMigrationState.previousCongestionAndRttStates.size(),
       1);
@@ -1469,6 +3016,17 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithC
   QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
   QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
   auto currentServerAddress = clientState.peerAddress;
+
+  CongestionAndRttState previousCongestionAndRttState;
+  previousCongestionAndRttState.congestionController =
+      congestionControllerFactory.makeCongestionController(
+          clientState,
+          clientState.transportSettings.defaultCongestionController);
+  previousCongestionAndRttState.srtt = 1us;
+  previousCongestionAndRttState.lrtt = 2us;
+  previousCongestionAndRttState.rttvar = 3us;
+  previousCongestionAndRttState.mrtt = 4us;
+
   poolMigrationAddressScheduler->setCurrentServerAddress(
       QuicIPAddress(currentServerAddress));
   poolMigrationAddressScheduler->insert(poolAddress1);
@@ -1479,9 +3037,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithC
   clientState.peerAddress =
       poolMigrationAddressScheduler->next()
           .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
-  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
-      CongestionAndRttState());
-  clientState.serverMigrationState.migrationInProgress = false;
+
   clientState.serverMigrationState.protocolState =
       PoolOfAddressesClientState(poolMigrationAddressScheduler);
   auto protocolState = clientState.serverMigrationState.protocolState
@@ -1490,7 +3046,20 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithC
   protocolState->probingFinished = false;
   protocolState->probingInProgress = true;
 
+  clientState.serverMigrationState.migrationInProgress = false;
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 100us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
+  ASSERT_FALSE(
+      previousCongestionAndRttState.congestionController->isAppLimited());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
   ASSERT_NE(clientState.peerAddress, currentServerAddress);
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      std::move(previousCongestionAndRttState));
+
   maybeEndServerMigrationProbing(clientState, currentServerAddress);
   EXPECT_EQ(clientState.peerAddress, currentServerAddress);
   EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
@@ -1502,6 +3071,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithC
   EXPECT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
   EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_EQ(clientState.lossState.srtt, 1us);
+  EXPECT_EQ(clientState.lossState.lrtt, 2us);
+  EXPECT_EQ(clientState.lossState.rttvar, 3us);
+  EXPECT_EQ(clientState.lossState.mrtt, 4us);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithNewServerAddress) {
@@ -1509,6 +3083,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithN
   QuicIPAddress poolAddress2(folly::IPAddressV4("2.2.2.2"), 2222);
   QuicIPAddress poolAddress3(folly::IPAddressV4("3.3.3.3"), 3333);
   auto currentServerAddress = clientState.peerAddress;
+
   poolMigrationAddressScheduler->setCurrentServerAddress(
       QuicIPAddress(currentServerAddress));
   poolMigrationAddressScheduler->insert(poolAddress1);
@@ -1519,9 +3094,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithN
   clientState.peerAddress =
       poolMigrationAddressScheduler->next()
           .getIPv4AddressAsSocketAddress(); // Returns poolAddress2
+
   clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
       CongestionAndRttState());
   clientState.serverMigrationState.migrationInProgress = false;
+
   clientState.serverMigrationState.protocolState =
       PoolOfAddressesClientState(poolMigrationAddressScheduler);
   auto protocolState = clientState.serverMigrationState.protocolState
@@ -1534,6 +3111,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithN
       clientState.peerAddress, poolAddress1.getIPv4AddressAsSocketAddress());
   ASSERT_FALSE(clientState.pathValidationLimiter);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+
   maybeEndServerMigrationProbing(
       clientState, poolAddress1.getIPv4AddressAsSocketAddress());
   EXPECT_EQ(
@@ -1552,35 +3130,24 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndPoolOfAddressesProbingWithN
   EXPECT_TRUE(clientState.pathValidationLimiter);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedDetectSymmetricMigration) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithMigrationDisabled) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  PacketNum packetNumber = 0;
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
-
-  // Test with server migration disabled.
-  EXPECT_THROW(
-      maybeDetectSymmetricMigration(clientState, serverNewAddress, 0),
-      QuicTransportException);
-
-  // Test with migration enabled, but with the new server
-  // address equal to the current server address.
-  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState);
-  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
-  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
-  ASSERT_FALSE(clientState.pathValidationLimiter);
-  EXPECT_NO_THROW(
-      maybeDetectSymmetricMigration(clientState, clientState.peerAddress, 1));
-  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
-  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
-  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+
+  EXPECT_THROW(
+      maybeDetectSymmetricMigration(
+          clientState, serverNewAddress, packetNumber),
+      QuicTransportException);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedDetectSymmetricMigration) {
-  folly::SocketAddress originalClientPeer = clientState.peerAddress;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPathValidationAlreadyStarted) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  PacketNum packetNumber = 1;
 
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
@@ -1588,122 +3155,155 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedDetectSymmetricMigrati
   enableServerMigrationClientSide();
   doNegotiation();
 
-  // Test without a protocol state.
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.serverMigrationState.protocolState = SymmetricClientState();
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asSymmetricClientState();
+  protocolState->pathValidationStarted = true;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
+  EXPECT_NE(serverNewAddress, clientState.peerAddress);
+  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+  EXPECT_TRUE(protocolState->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithoutProtocolState) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  PacketNum packetNumber = 0;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState);
   ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
+  ASSERT_TRUE(
+      clientState.serverMigrationState.protocolState->asSymmetricClientState());
+  EXPECT_TRUE(
+      clientState.serverMigrationState.protocolState->asSymmetricClientState()
+          ->pathValidationStarted);
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
-  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
-  EXPECT_TRUE(
-      clientState.serverMigrationState.protocolState->asSymmetricClientState()
-          ->pathValidationStarted);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
 
-  // Test with a protocol state already created by the reception of a
-  // SERVER_MIGRATED frame.
-  clientState.peerAddress = originalClientPeer;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithProtocolStateAlreadyPresent) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  PacketNum packetNumber = 0;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
   clientState.serverMigrationState.protocolState = SymmetricClientState();
   clientState.serverMigrationState.migrationInProgress = false;
-  clientState.serverMigrationState.largestProcessedPacketNumber.clear();
-  clientState.pendingEvents.pathChallenge.clear();
-  clientState.pathValidationLimiter = nullptr;
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
+  clientState.serverMigrationState.largestProcessedPacketNumber = packetNumber;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
-  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState()
           ->pathValidationStarted);
-
-  // Test with path validation already in progress.
-  clientState.peerAddress = originalClientPeer;
-  clientState.serverMigrationState.protocolState = SymmetricClientState();
-  clientState.serverMigrationState.protocolState->asSymmetricClientState()
-      ->pathValidationStarted = true;
-  clientState.serverMigrationState.migrationInProgress = false;
-  clientState.serverMigrationState.largestProcessedPacketNumber.clear();
-  clientState.pendingEvents.pathChallenge.clear();
-  clientState.pathValidationLimiter = nullptr;
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
-  EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
-  EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
-  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
-  EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigratedAfterSymmetricMigrationDetected) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
 
+  PacketNum packetNumberServerMigrated = 1;
+  PacketNum packetNumberMigration = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   enableServerMigrationServerSide();
   enableServerMigrationClientSide();
   doNegotiation();
 
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 2);
+  maybeDetectSymmetricMigration(
+      clientState, serverNewAddress, packetNumberMigration);
   ASSERT_EQ(clientState.peerAddress, serverNewAddress);
   ASSERT_TRUE(clientState.serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumberMigration);
   ASSERT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState());
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, ServerMigratedFrame(), 1, serverNewAddress));
+      clientState,
+      ServerMigratedFrame(),
+      packetNumberServerMigrated,
+      serverNewAddress));
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumberMigration);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState());
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestUnexpectedDetectSynchronizedSymmetricMigration) {
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigrationWithMigrationDisabled) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  PacketNum packetNumber = 1;
+
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.serverMigrationState.negotiator);
 
-  // Test with server migration disabled.
   EXPECT_THROW(
-      maybeDetectSymmetricMigration(clientState, serverNewAddress, 0),
+      maybeDetectSymmetricMigration(
+          clientState, serverNewAddress, packetNumber),
       QuicTransportException);
-
-  // Test with migration enabled, but with the new server
-  // address equal to the current server address.
-  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
-  ASSERT_FALSE(clientState.serverMigrationState.protocolState);
-  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
-  ASSERT_FALSE(clientState.pathValidationLimiter);
-  EXPECT_NO_THROW(
-      maybeDetectSymmetricMigration(clientState, clientState.peerAddress, 1));
-  EXPECT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
-  EXPECT_FALSE(clientState.serverMigrationState.protocolState);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
 }
 
-TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedDetectSynchronizedSymmetricMigration) {
-  folly::SocketAddress originalClientPeer = clientState.peerAddress;
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigrationWithPathValidationAlreadyStarted) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
-  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  PacketNum packetNumber = 1;
 
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
@@ -1713,49 +3313,75 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestExpectedDetectSynchronizedSymm
   enableServerMigrationClientSide();
   doNegotiation();
 
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.serverMigrationState.protocolState =
+      SynchronizedSymmetricClientState();
+  auto protocolState = clientState.serverMigrationState.protocolState
+                           ->asSynchronizedSymmetricClientState();
+  protocolState->pathValidationStarted = true;
+
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
+  ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
+  ASSERT_FALSE(clientState.pathValidationLimiter);
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
+  EXPECT_NE(serverNewAddress, clientState.peerAddress);
+  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
+  EXPECT_FALSE(clientState.pathValidationLimiter);
+  EXPECT_TRUE(protocolState->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
+}
+
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigration) {
+  folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
+  PacketNum packetNumber = 1;
+
+  serverSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  clientSupportedProtocols.insert(
+      ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
   clientState.serverMigrationState.protocolState =
       SynchronizedSymmetricClientState();
 
-  // Test correct detection.
-  ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState
                    ->asSynchronizedSymmetricClientState()
                    ->pathValidationStarted);
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
+
+  maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
   EXPECT_TRUE(clientState.pendingEvents.pathChallenge);
   EXPECT_TRUE(clientState.pathValidationLimiter);
-  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumber);
   EXPECT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState()
                   ->pathValidationStarted);
-
-  // Test with path validation already in progress.
-  clientState.peerAddress = originalClientPeer;
-  clientState.serverMigrationState.protocolState =
-      SynchronizedSymmetricClientState();
-  clientState.serverMigrationState.protocolState
-      ->asSynchronizedSymmetricClientState()
-      ->pathValidationStarted = true;
-  clientState.serverMigrationState.largestProcessedPacketNumber.clear();
-  clientState.pendingEvents.pathChallenge.clear();
-  clientState.pathValidationLimiter = nullptr;
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 0);
-  EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
-  EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 0);
-  EXPECT_FALSE(clientState.pendingEvents.pathChallenge);
-  EXPECT_FALSE(clientState.pathValidationLimiter);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigratedAfterSynchronizedSymmetricMigrationDetected) {
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
 
+  PacketNum packetNumberServerMigrated = 1;
+  PacketNum packetNumberMigration = 2;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigratedReceived).Times(0);
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   clientSupportedProtocols.insert(
@@ -1764,97 +3390,115 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
   enableServerMigrationClientSide();
   doNegotiation();
 
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumberServerMigrated - 1;
   clientState.serverMigrationState.protocolState =
       SynchronizedSymmetricClientState();
 
-  maybeDetectSymmetricMigration(clientState, serverNewAddress, 2);
+  maybeDetectSymmetricMigration(
+      clientState, serverNewAddress, packetNumberMigration);
   ASSERT_EQ(clientState.peerAddress, serverNewAddress);
-  ASSERT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumberMigration);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState());
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
-      clientState, ServerMigratedFrame(), 1, serverNewAddress));
+      clientState,
+      ServerMigratedFrame(),
+      packetNumberServerMigrated,
+      serverNewAddress));
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
-  EXPECT_TRUE(clientState.serverMigrationState.largestProcessedPacketNumber);
   EXPECT_EQ(
-      clientState.serverMigrationState.largestProcessedPacketNumber.value(), 2);
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      packetNumberMigration);
   EXPECT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  PacketNum endMigrationPacketNumber = 1;
+
+  auto callback = std::make_shared<MockServerMigrationEventCallback>();
+  EXPECT_CALL(*callback, onServerMigrationCompleted()).Times(Exactly(1));
+  clientState.serverMigrationState.serverMigrationEventCallback = callback;
+
   clientState.serverMigrationState.protocolState =
       ExplicitClientState(migrationAddress);
   clientState.serverMigrationState.migrationInProgress = true;
   clientState.pathValidationLimiter =
       std::make_unique<quic::PendingPathRateLimiter>(
           clientState.udpSendPacketLen);
-  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      endMigrationPacketNumber - 1;
+  clientState.serverMigrationState.numberOfMigrations = 0;
 
-  auto callback = std::make_shared<MockServerMigrationEventCallback>();
-  EXPECT_CALL(*callback, onServerMigrationCompleted()).Times(Exactly(1));
-  clientState.serverMigrationState.serverMigrationEventCallback = callback;
-
-  ASSERT_TRUE(clientState.serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(clientState.serverMigrationState.protocolState);
-  ASSERT_TRUE(clientState.pathValidationLimiter);
-  ASSERT_EQ(clientState.serverMigrationState.numberOfMigrations, 0);
-  ASSERT_EQ(clientState.serverMigrationState.largestProcessedPacketNumber, 0);
-
-  endServerMigration(clientState, 1);
+  endServerMigration(clientState, endMigrationPacketNumber);
   EXPECT_FALSE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_FALSE(clientState.serverMigrationState.protocolState);
   EXPECT_FALSE(clientState.pathValidationLimiter);
   EXPECT_EQ(clientState.serverMigrationState.numberOfMigrations, 1);
-  EXPECT_EQ(clientState.serverMigrationState.largestProcessedPacketNumber, 1);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      endMigrationPacketNumber);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationServerSide) {
-  serverState.serverMigrationState.protocolState = SymmetricServerState();
-  serverState.serverMigrationState.migrationInProgress = true;
-  serverState.serverMigrationState.largestProcessedPacketNumber = 0;
+  PacketNum endMigrationPacketNumber = 1;
 
   auto callback = std::make_shared<MockServerMigrationEventCallback>();
   EXPECT_CALL(*callback, onServerMigrationCompleted(_)).Times(Exactly(1));
   serverState.serverMigrationState.serverMigrationEventCallback = callback;
 
-  ASSERT_TRUE(serverState.serverMigrationState.migrationInProgress);
-  ASSERT_TRUE(serverState.serverMigrationState.protocolState);
-  ASSERT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 0);
+  serverState.serverMigrationState.protocolState = SymmetricServerState();
+  serverState.serverMigrationState.migrationInProgress = true;
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      endMigrationPacketNumber - 1;
 
-  endServerMigration(serverState, 1);
+  endServerMigration(serverState, endMigrationPacketNumber);
   EXPECT_FALSE(serverState.serverMigrationState.migrationInProgress);
   EXPECT_FALSE(serverState.serverMigrationState.protocolState);
-  EXPECT_EQ(serverState.serverMigrationState.largestProcessedPacketNumber, 1);
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      endMigrationPacketNumber);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearServerPoolOfAddressesState) {
+  PacketNum endMigrationPacketNumber = 1;
   serverState.serverMigrationState.protocolState = PoolOfAddressesServerState();
-  serverState.serverMigrationState.largestProcessedPacketNumber = 0;
-  endServerMigration(serverState, 1);
+  serverState.serverMigrationState.largestProcessedPacketNumber =
+      endMigrationPacketNumber - 1;
+
+  endServerMigration(serverState, endMigrationPacketNumber);
   EXPECT_TRUE(serverState.serverMigrationState.protocolState);
   EXPECT_TRUE(serverState.serverMigrationState.protocolState
                   ->asPoolOfAddressesServerState());
+  EXPECT_EQ(
+      serverState.serverMigrationState.largestProcessedPacketNumber.value(),
+      endMigrationPacketNumber);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationDoesNotClearClientPoolOfAddressesState) {
+  PacketNum endMigrationPacketNumber = 1;
   PoolOfAddressesClientState protocolState(poolMigrationAddressScheduler);
   protocolState.probingInProgress = false;
   protocolState.probingFinished = true;
   clientState.serverMigrationState.protocolState = std::move(protocolState);
-  clientState.serverMigrationState.largestProcessedPacketNumber = 0;
-  endServerMigration(clientState, 1);
-  EXPECT_TRUE(clientState.serverMigrationState.protocolState);
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      endMigrationPacketNumber - 1;
+
+  endServerMigration(clientState, endMigrationPacketNumber);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState
                   ->asPoolOfAddressesClientState());
   auto newProtocolState = clientState.serverMigrationState.protocolState
                               ->asPoolOfAddressesClientState();
   EXPECT_FALSE(newProtocolState->probingInProgress);
   EXPECT_FALSE(newProtocolState->probingFinished);
+  EXPECT_EQ(
+      clientState.serverMigrationState.largestProcessedPacketNumber.value(),
+      endMigrationPacketNumber);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestRetransmissionOnPacketLoss) {
@@ -1862,7 +3506,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestRetransmissionOnPacketLoss) {
   ServerMigrationFrame serverMigrationFrame(emptyAddress);
   ASSERT_TRUE(serverState.pendingEvents.frames.empty());
   updateServerMigrationFrameOnPacketLoss(serverState, serverMigrationFrame);
-  EXPECT_FALSE(serverState.pendingEvents.frames.empty());
+  EXPECT_EQ(serverState.pendingEvents.frames.size(), 1);
   EXPECT_EQ(
       *serverState.pendingEvents.frames.at(0)
            .asQuicServerMigrationFrame()
