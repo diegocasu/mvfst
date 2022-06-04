@@ -571,10 +571,10 @@ void handleServerMigratedFrame(
     auto protocolState = connectionState.serverMigrationState.protocolState
                              ->asSymmetricClientState();
     if (connectionState.serverMigrationState.serverMigrationEventCallback &&
-        !protocolState->callbackNotified) {
+        !protocolState->onServerMigratedReceivedNotified) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigratedReceived();
-      protocolState->callbackNotified = true;
+      protocolState->onServerMigratedReceivedNotified = true;
     }
     return;
   }
@@ -584,10 +584,10 @@ void handleServerMigratedFrame(
     auto protocolState = connectionState.serverMigrationState.protocolState
                              ->asSynchronizedSymmetricClientState();
     if (connectionState.serverMigrationState.serverMigrationEventCallback &&
-        !protocolState->callbackNotified) {
+        !protocolState->onServerMigratedReceivedNotified) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigratedReceived();
-      protocolState->callbackNotified = true;
+      protocolState->onServerMigratedReceivedNotified = true;
     }
   }
 }
@@ -600,11 +600,11 @@ void handleServerMigratedFrameAck(
     auto protocolState = connectionState.serverMigrationState.protocolState
                              ->asSymmetricServerState();
     if (connectionState.serverMigrationState.serverMigrationEventCallback &&
-        !protocolState->callbackNotified) {
+        !protocolState->onServerMigratedAckReceivedNotified) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigratedAckReceived(connectionState.serverMigrationState
                                             .originalConnectionId.value());
-      protocolState->callbackNotified = true;
+      protocolState->onServerMigratedAckReceivedNotified = true;
     }
     return;
   }
@@ -614,11 +614,11 @@ void handleServerMigratedFrameAck(
     auto protocolState = connectionState.serverMigrationState.protocolState
                              ->asSynchronizedSymmetricServerState();
     if (connectionState.serverMigrationState.serverMigrationEventCallback &&
-        !protocolState->callbackNotified) {
+        !protocolState->onServerMigratedAckReceivedNotified) {
       connectionState.serverMigrationState.serverMigrationEventCallback
           ->onServerMigratedAckReceived(connectionState.serverMigrationState
                                             .originalConnectionId.value());
-      protocolState->callbackNotified = true;
+      protocolState->onServerMigratedAckReceivedNotified = true;
     }
   }
 }
@@ -649,8 +649,8 @@ void maybeUpdateExplicitServerMigrationProbing(
   protocolState->probingInProgress = true;
 
   if (connectionState.serverMigrationState.serverMigrationEventCallback &&
-      !protocolState->callbackNotified) {
-    protocolState->callbackNotified = true;
+      !protocolState->onServerMigrationProbingStartedNotified) {
+    protocolState->onServerMigrationProbingStartedNotified = true;
     connectionState.serverMigrationState.serverMigrationEventCallback
         ->onServerMigrationProbingStarted(
             quic::ServerMigrationProtocol::EXPLICIT,

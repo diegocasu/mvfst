@@ -60,7 +60,7 @@ struct ExplicitClientState {
   folly::SocketAddress serverAddressBeforeProbing;
   bool probingInProgress{false};
   bool probingFinished{false};
-  bool callbackNotified{false};
+  bool onServerMigrationProbingStartedNotified{false};
 
   ExplicitClientState(QuicIPAddress migrationAddress)
       : migrationAddress(std::move(migrationAddress)) {}
@@ -70,7 +70,8 @@ struct ExplicitClientState {
         serverAddressBeforeProbing == rhs.serverAddressBeforeProbing &&
         probingInProgress == rhs.probingInProgress &&
         probingFinished == rhs.probingFinished &&
-        callbackNotified == rhs.callbackNotified;
+        onServerMigrationProbingStartedNotified ==
+        rhs.onServerMigrationProbingStartedNotified;
   }
 
   bool operator!=(const ExplicitClientState& rhs) const {
@@ -79,11 +80,12 @@ struct ExplicitClientState {
 };
 
 struct SymmetricClientState {
-  bool callbackNotified{false};
+  bool onServerMigratedReceivedNotified{false};
   bool pathValidationStarted{false};
 
   bool operator==(const SymmetricClientState& rhs) const {
-    return callbackNotified == rhs.callbackNotified &&
+    return onServerMigratedReceivedNotified ==
+        rhs.onServerMigratedReceivedNotified &&
         pathValidationStarted == rhs.pathValidationStarted;
   }
 
@@ -93,11 +95,12 @@ struct SymmetricClientState {
 };
 
 struct SynchronizedSymmetricClientState {
-  bool callbackNotified{false};
+  bool onServerMigratedReceivedNotified{false};
   bool pathValidationStarted{false};
 
   bool operator==(const SynchronizedSymmetricClientState& rhs) const {
-    return callbackNotified == rhs.callbackNotified &&
+    return onServerMigratedReceivedNotified ==
+        rhs.onServerMigratedReceivedNotified &&
         pathValidationStarted == rhs.pathValidationStarted;
   }
 

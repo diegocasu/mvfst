@@ -1263,7 +1263,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedS
           SynchronizedSymmetricClientState);
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricClientState();
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_EQ(
@@ -1292,7 +1292,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSync
       SynchronizedSymmetricClientState();
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricClientState();
-  protocolState->callbackNotified = false;
+  protocolState->onServerMigratedReceivedNotified = false;
   protocolState->pathValidationStarted = false;
   clientState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
@@ -1300,7 +1300,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSync
 
   updateServerMigrationFrameOnPacketReceived(
       clientState, serverMigrationFrame, packetNumber, clientState.peerAddress);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
   EXPECT_TRUE(clientState.serverMigrationState.migrationInProgress);
   EXPECT_EQ(
@@ -1472,14 +1472,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
   ASSERT_FALSE(serverState.serverMigrationState.negotiator);
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_FALSE(protocolState->migrationAcknowledged);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigrationFrame, packetNumber),
       QuicTransportException);
   EXPECT_FALSE(protocolState->migrationAcknowledged);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWithSynchronizedSymmetricNotNegotiated) {
@@ -1505,14 +1505,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
 
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_FALSE(protocolState->migrationAcknowledged);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigrationFrame, packetNumber),
       QuicTransportException);
   EXPECT_FALSE(protocolState->migrationAcknowledged);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedSymmetricServerMigrationAckWithoutProtocolState) {
@@ -1600,7 +1600,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSymmetricServ
       QuicServerMigrationProtocolClientState::Type::SymmetricClientState);
   auto protocolState =
       clientState.serverMigrationState.protocolState->asSymmetricClientState();
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
@@ -1625,7 +1625,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSymm
   clientState.serverMigrationState.protocolState = SymmetricClientState();
   auto protocolState =
       clientState.serverMigrationState.protocolState->asSymmetricClientState();
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigratedReceivedNotified = true;
   protocolState->pathValidationStarted = false;
   clientState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
@@ -1637,7 +1637,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSymm
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
 }
 
@@ -1770,12 +1770,12 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedS
       packetNumber - 1;
 
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedReceivedNotified);
   ASSERT_FALSE(protocolState->pathValidationStarted);
 
   updateServerMigrationFrameOnPacketReceived(
       clientState, serverMigratedFrame, packetNumber, serverNewAddress);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
@@ -1803,7 +1803,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSync
       SynchronizedSymmetricClientState();
   auto protocolState = clientState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricClientState();
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigratedReceivedNotified = true;
   clientState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
@@ -1815,7 +1815,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfDuplicateSync
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
 }
 
@@ -1837,14 +1837,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedS
 
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.negotiator);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedReceivedNotified);
   ASSERT_FALSE(protocolState->pathValidationStarted);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketReceived(
           clientState, serverMigratedFrame, packetNumber, serverNewAddress),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
 }
 
@@ -1903,7 +1903,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedS
   clientState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedReceivedNotified);
   ASSERT_FALSE(protocolState->pathValidationStarted);
 
   EXPECT_THROW(
@@ -1913,7 +1913,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfSynchronizedS
           packetNumber,
           clientState.peerAddress),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedReceivedNotified);
   EXPECT_FALSE(protocolState->pathValidationStarted);
 }
 
@@ -1936,11 +1936,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServ
       serverState.serverMigrationState.protocolState->asSymmetricServerState();
 
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigratedFrame, packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_EQ(
       serverState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
@@ -1963,13 +1963,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateSymm
   serverState.serverMigrationState.protocolState = SymmetricServerState();
   auto protocolState =
       serverState.serverMigrationState.protocolState->asSymmetricServerState();
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigratedAckReceivedNotified = true;
   serverState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigratedFrame, packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_EQ(
       serverState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
@@ -1989,13 +1989,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServ
 
   ASSERT_FALSE(serverState.serverMigrationState.negotiator);
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
 }
 
@@ -2018,13 +2018,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServ
       serverState.serverMigrationState.protocolState->asSymmetricServerState();
 
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServerMigratedAckWithoutProtocolState) {
@@ -2101,11 +2101,11 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
   serverState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigratedFrame, packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_EQ(
       serverState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
@@ -2132,13 +2132,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfDuplicateSync
   auto protocolState = serverState.serverMigrationState.protocolState
                            ->asSynchronizedSymmetricServerState();
   protocolState->migrationAcknowledged = true;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigratedAckReceivedNotified = true;
   serverState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
   updateServerMigrationFrameOnPacketAckReceived(
       serverState, serverMigratedFrame, packetNumber);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_EQ(
       serverState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
@@ -2161,13 +2161,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
       packetNumber - 1;
 
   ASSERT_FALSE(serverState.serverMigrationState.negotiator);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
   EXPECT_EQ(
       serverState.serverMigrationState.largestProcessedPacketNumber.value(),
@@ -2196,13 +2196,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
   serverState.serverMigrationState.largestProcessedPacketNumber =
       packetNumber - 1;
 
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_TRUE(protocolState->migrationAcknowledged);
 }
 
@@ -2285,13 +2285,13 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
   protocolState->migrationAcknowledged = false;
 
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
 
   EXPECT_THROW(
       updateServerMigrationFrameOnPacketAckReceived(
           serverState, serverMigratedFrame, packetNumber),
       QuicTransportException);
-  EXPECT_FALSE(protocolState->callbackNotified);
+  EXPECT_FALSE(protocolState->onServerMigratedAckReceivedNotified);
   EXPECT_FALSE(protocolState->migrationAcknowledged);
 }
 
@@ -2327,7 +2327,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
       clientState.peerAddress);
   ASSERT_FALSE(protocolState->probingInProgress);
   ASSERT_FALSE(protocolState->probingFinished);
-  ASSERT_FALSE(protocolState->callbackNotified);
+  ASSERT_FALSE(protocolState->onServerMigrationProbingStartedNotified);
   ASSERT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
   ASSERT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
@@ -2338,7 +2338,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
       migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
   EXPECT_EQ(
@@ -2364,7 +2364,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->probingFinished = false;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
@@ -2388,7 +2388,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
       migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       protocolState->serverAddressBeforeProbing, peerAddressBeforeProbing);
   EXPECT_EQ(
@@ -2414,7 +2414,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   auto protocolState =
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = false;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->probingFinished = true;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
@@ -2442,7 +2442,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationP
   maybeUpdateServerMigrationProbing(clientState);
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
@@ -2479,7 +2479,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
   protocolState->probingFinished = false;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
   clientState.lossState.srtt = 10us;
@@ -2505,7 +2505,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   EXPECT_EQ(protocolState->serverAddressBeforeProbing, folly::SocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_TRUE(
       clientState.serverMigrationState.previousCongestionAndRttStates.empty());
   EXPECT_EQ(clientState.lossState.srtt, 1us);
@@ -2527,7 +2527,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
   protocolState->probingFinished = false;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
   clientState.lossState.srtt = 10us;
@@ -2549,7 +2549,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
       clientState, migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
@@ -2578,7 +2578,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = true;
   protocolState->probingFinished = false;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
   clientState.lossState.srtt = 10us;
@@ -2602,7 +2602,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndExplicitServerMigrationProb
   maybeEndServerMigrationProbing(clientState, unknownPeerAddress);
   EXPECT_TRUE(protocolState->probingInProgress);
   EXPECT_FALSE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
@@ -2630,7 +2630,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestAttemptToEndExplicitServerMigr
       clientState.serverMigrationState.protocolState->asExplicitClientState();
   protocolState->probingInProgress = false;
   protocolState->probingFinished = true;
-  protocolState->callbackNotified = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
   protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
   clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
   clientState.lossState.srtt = 10us;
@@ -2657,7 +2657,7 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestAttemptToEndExplicitServerMigr
       clientState, migrationAddress.getIPv4AddressAsSocketAddress());
   EXPECT_FALSE(protocolState->probingInProgress);
   EXPECT_TRUE(protocolState->probingFinished);
-  EXPECT_TRUE(protocolState->callbackNotified);
+  EXPECT_TRUE(protocolState->onServerMigrationProbingStartedNotified);
   EXPECT_EQ(
       clientState.peerAddress,
       migrationAddress.getIPv4AddressAsSocketAddress());
