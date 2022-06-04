@@ -381,16 +381,16 @@ class QuicServerMigrationIntegrationTestServer {
     }
 
     quic::QuicServerTransport::Ptr make(
-        folly::EventBase* evb,
+        folly::EventBase* eventBase,
         std::unique_ptr<folly::AsyncUDPSocket> sock,
         const folly::SocketAddress&,
         QuicVersion,
         std::shared_ptr<const fizz::server::FizzServerContext> ctx) noexcept
         override {
-      CHECK_EQ(evb, sock->getEventBase());
-      auto handler = std::make_unique<MessageHandler>(evb);
+      CHECK_EQ(eventBase, sock->getEventBase());
+      auto handler = std::make_unique<MessageHandler>(eventBase);
       auto transport = quic::QuicServerTransport::make(
-          evb, std::move(sock), handler.get(), handler.get(), ctx);
+          eventBase, std::move(sock), handler.get(), handler.get(), ctx);
 
       if (!migrationProtocols.empty()) {
         transport->allowServerMigration(migrationProtocols);
@@ -503,6 +503,32 @@ class QuicServerMigrationIntegrationTest : public Test {
   }
 
  public:
+  void startServerAndWaitUntilInitialized(
+      QuicServerMigrationIntegrationTestServer& server) {
+    server.start();
+    server.server->waitUntilInitialized();
+  }
+
+  void startClientAndWaitUntilHandshakeFinished(
+      QuicServerMigrationIntegrationTestClient& client,
+      std::function<void(quic::QuicError)>& testPredicate) {
+    client.setConnectionErrorTestPredicate(testPredicate);
+    client.start();
+    client.startDone_.wait();
+
+    // Send a message and wait for the response to be sure
+    // that the server has finished the handshake.
+    client.send("ping");
+    EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
+    client.messageReceived.reset();
+  }
+
+  template <class Server, class... Clients>
+  void shutdownServerAndClients(Server& server, Clients&... clients) {
+    (..., clients.close());
+    server.server->shutdown();
+  }
+
   std::string serverIP{"127.0.0.1"};
   uint16_t serverPort{50000};
   std::string clientIP{"127.0.0.55"};
@@ -522,11 +548,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
   serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
 
-  auto compareWithExpectedClient =
-      [&](folly::SocketAddress clientAddress,
-          Unused,
-          folly::Optional<std::unordered_set<ServerMigrationProtocol>>
-              negotiatedProtocols) {
+  auto clientStateUpdateCallback =
+      std::make_shared<MockClientStateUpdateCallback>();
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](folly::SocketAddress clientAddress,
+                    Unused,
+                    folly::Optional<std::unordered_set<ServerMigrationProtocol>>
+                        negotiatedProtocols) {
         EXPECT_EQ(clientAddress.getIPAddress().str(), clientIP);
         EXPECT_EQ(clientAddress.getPort(), clientPort);
 
@@ -534,38 +563,20 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNewClientNotified) {
         EXPECT_EQ(negotiatedProtocols.value().size(), 1);
         EXPECT_TRUE(negotiatedProtocols.value().count(
             ServerMigrationProtocol::EXPLICIT));
-      };
-
-  auto clientStateUpdateCallback =
-      std::make_shared<MockClientStateUpdateCallback>();
-  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
-      .Times(Exactly(1))
-      .WillOnce(compareWithExpectedClient);
+      });
 
   QuicServerMigrationIntegrationTestServer server(
       serverIP,
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  // Send a message and wait for the response to be sure that
-  // the server has finished the handshake.
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  // When the response to the previous message has been received,
-  // clientStateUpdateCallback should have been evaluated, so the test can end.
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
@@ -573,40 +584,29 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConnectionCloseNotified) {
   auto clientStateUpdateCallback =
       std::make_shared<MockClientStateUpdateCallback>();
 
-  {
-    InSequence seq;
-    EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
-        .Times(Exactly(1))
-        .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
-          serverCidHex = serverConnectionId.hex();
-        });
-    EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
-        .Times(Exactly(1))
-        .WillOnce([&](ConnectionId serverConnectionId) {
-          EXPECT_EQ(serverCidHex, serverConnectionId.hex());
-        });
-  }
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
+        serverCidHex = serverConnectionId.hex();
+      });
+  EXPECT_CALL(*clientStateUpdateCallback, onConnectionClose)
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId) {
+        EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+      });
 
   QuicServerMigrationIntegrationTestServer server(
       serverIP,
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
@@ -617,39 +617,29 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
   auto clientStateUpdateCallback =
       std::make_shared<MockClientStateUpdateCallback>();
 
-  {
-    InSequence seq;
-    EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
-        .Times(Exactly(1))
-        .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
-          serverCidHex = serverConnectionId.hex();
-        });
-    EXPECT_CALL(*clientStateUpdateCallback, onClientMigrationDetected)
-        .Times(Exactly(1))
-        .WillOnce([&](ConnectionId serverConnectionId,
-                      folly::SocketAddress newClientAddress) {
-          EXPECT_EQ(serverCidHex, serverConnectionId.hex());
-          EXPECT_EQ(clientMigrationAddress, newClientAddress);
-        });
-  }
+  EXPECT_CALL(*clientStateUpdateCallback, onHandshakeFinished)
+      .Times(Exactly(1))
+      .WillOnce([&](Unused, ConnectionId serverConnectionId, Unused) {
+        serverCidHex = serverConnectionId.hex();
+      });
+  EXPECT_CALL(*clientStateUpdateCallback, onClientMigrationDetected)
+      .Times(Exactly(1))
+      .WillOnce([&](ConnectionId serverConnectionId,
+                    folly::SocketAddress newClientAddress) {
+        EXPECT_EQ(serverCidHex, serverConnectionId.hex());
+        EXPECT_EQ(clientMigrationAddress, newClientAddress);
+      });
 
   QuicServerMigrationIntegrationTestServer server(
       serverIP,
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
   // Migrate client.
   auto newClientSocket =
@@ -657,13 +647,12 @@ TEST_F(QuicServerMigrationIntegrationTest, TestClientMigrationNotified) {
   newClientSocket->bind(clientMigrationAddress);
   client.transport->onNetworkSwitch(std::move(newClientSocket));
 
-  // Send a message from the new address.
+  // Send a message from the new address to test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
@@ -695,21 +684,13 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSuccessfulNegotiation) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
@@ -735,27 +716,19 @@ TEST_F(QuicServerMigrationIntegrationTest, TestUnsuccessfulNegotiation) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
-  // serverSupportedProtocols and clientSupportedProtocols are left empty,
-  // so the server migration support is automatically disabled
-  // by the test classes.
+  // serverSupportedProtocols and clientSupportedProtocols are
+  // left empty, so that the server migration support is automatically
+  // disabled by the test classes.
 
   auto clientStateUpdateCallback =
       std::make_shared<MockClientStateUpdateCallback>();
@@ -773,21 +746,13 @@ TEST_F(QuicServerMigrationIntegrationTest, TestNoNegotiation) {
       serverPort,
       serverSupportedProtocols,
       clientStateUpdateCallback);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP, clientPort, serverIP, serverPort, clientSupportedProtocols);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
@@ -846,8 +811,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -856,22 +820,16 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSendPoolMigrationAddresses) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
-  // Send a second message to be sure that the acks,
-  // if present, are received by the server.
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsuccessfulNegotiation) {
@@ -904,8 +862,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
       nullptr,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -914,22 +871,16 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithUnsucce
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
-  // Send a second message to be sure that the acks,
-  // if present, are received by the server.
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegotiation) {
@@ -961,8 +912,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
       nullptr,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -971,22 +921,16 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithNoNegot
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
-  // Send a second message to be sure that the acks,
-  // if present, are received by the server.
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDifferentProtocolNegotiated) {
@@ -1020,8 +964,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
       nullptr,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1030,22 +973,16 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolMigrationAddressesWithDiffere
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
 
-  // Send a second message to be sure that the acks,
-  // if present, are received by the server.
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
@@ -1080,8 +1017,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1090,13 +1026,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
@@ -1177,8 +1107,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration) {
@@ -1239,8 +1168,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1249,16 +1177,11 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  // Send a second message to be sure that the acknowledgements for the pool
-  // migration addresses, if present, are received by the server.
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -1271,14 +1194,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
 
   // Before starting the migration, wait a bit to be sure that the ACK for the
   // echo message is received by the server. This avoids a particular case where
-  // the call to onNetworkSwitch() happens before the server receives the ACK,
+  // the call to onNetworkSwitch() happens before the server receives this ACK,
   // causing a PTO in the server just after the migration. Due to the PTO, the
   // server sends a PING message from the new address, right in the middle of
   // the migration probing done by the client, concluding it and forcing the
   // client to send a PATH_CHALLENGE. This behaviour is correct and satisfies
   // the requirements of the Pool of Addresses protocol, but "hides" the
   // migration probing in the network traces, so it is better to avoid it in
-  // this context. Note that the test succeeds even if the waiting is removed.
+  // this context. Note that the test still succeeds if the wait is removed.
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Notify imminent server migration.
@@ -1328,6 +1251,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   ASSERT_TRUE(
       poolMigrationAddresses.count(QuicIPAddress(serverMigrationAddress)));
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+
   server.server->onNetworkSwitch(serverMigrationAddress);
   EXPECT_EQ(server.server->getAddress(), serverMigrationAddress);
   client.send("probing");
@@ -1343,8 +1267,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
@@ -1379,8 +1302,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1389,13 +1311,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
@@ -1451,6 +1367,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackServerSide.get());
 
+  // Test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -1460,8 +1377,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigration) {
@@ -1498,8 +1414,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1508,13 +1423,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
@@ -1588,6 +1497,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackServerSide.get());
 
+  // Test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -1597,8 +1507,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigration) {
@@ -1619,8 +1528,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigrati
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   // Notify imminent server migration. Since no clients are connected to the
   // server, this operation will only block handshakes from new clients until
@@ -1673,13 +1581,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigrati
       serverMigrationAddress.getPort(),
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  acceptedClient.setConnectionErrorTestPredicate(defaultTestPredicate);
-  acceptedClient.start();
-  acceptedClient.startDone_.wait();
-
-  acceptedClient.send("ping");
-  EXPECT_TRUE(acceptedClient.messageReceived.try_wait_for(batonTimeout));
-  acceptedClient.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(
+      acceptedClient, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Close the connection.
@@ -1688,8 +1591,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestRejectNewConnectionsDuringMigrati
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  acceptedClient.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, acceptedClient);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
@@ -1724,8 +1626,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -1734,13 +1635,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
@@ -1798,6 +1693,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackServerSide.get());
 
+  // Test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -1807,8 +1703,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDifferentProtocolsAtTheSameTime) {
@@ -1817,9 +1712,11 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
   serverSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   serverSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   QuicIPAddress quicIpServerMigrationAddress(serverMigrationAddress);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+
   auto clientStateUpdateCallback =
       std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
   auto serverMigrationEventCallbackServerSide =
@@ -1828,17 +1725,19 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
 
   // Client variables.
   // All clients support the same protocols, but each one will
-  // use a different protocol during the server migration.
+  // use a different one during the server migration.
   clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
   clientSupportedProtocols.insert(ServerMigrationProtocol::SYMMETRIC);
   clientSupportedProtocols.insert(
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
+
   folly::SocketAddress firstClientAddress =
       folly::SocketAddress("127.1.1.1", 50001);
   folly::SocketAddress secondClientAddress =
       folly::SocketAddress("127.2.2.2", 50002);
   folly::SocketAddress thirdClientAddress =
       folly::SocketAddress("127.3.3.3", 50003);
+
   auto serverMigrationEventCallbackFirstClient =
       std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
   auto serverMigrationEventCallbackSecondClient =
@@ -1878,18 +1777,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
-
-  auto waitForClientConnection =
-      [this](QuicServerMigrationIntegrationTestClient& client) {
-        client.setConnectionErrorTestPredicate(this->defaultTestPredicate);
-        client.start();
-        client.startDone_.wait();
-        client.send("ping");
-        EXPECT_TRUE(client.messageReceived.try_wait_for(this->batonTimeout));
-        client.messageReceived.reset();
-      };
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient firstClient(
       firstClientAddress.getAddressStr(),
@@ -1898,7 +1786,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackFirstClient);
-  waitForClientConnection(firstClient);
+  startClientAndWaitUntilHandshakeFinished(firstClient, defaultTestPredicate);
 
   QuicServerMigrationIntegrationTestClient secondClient(
       secondClientAddress.getAddressStr(),
@@ -1907,7 +1795,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackSecondClient);
-  waitForClientConnection(secondClient);
+  startClientAndWaitUntilHandshakeFinished(secondClient, defaultTestPredicate);
 
   QuicServerMigrationIntegrationTestClient thirdClient(
       thirdClientAddress.getAddressStr(),
@@ -1916,7 +1804,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackThirdClient);
-  waitForClientConnection(thirdClient);
+  startClientAndWaitUntilHandshakeFinished(thirdClient, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Second step: notify imminent server migration using:
@@ -2083,11 +1971,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
             serverConnectionId == serverCids.at(secondClientAddress) ||
             serverConnectionId == serverCids.at(thirdClientAddress));
       });
-
-  firstClient.close();
-  secondClient.close();
-  thirdClient.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, firstClient, secondClient, thirdClient);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheSameProtocolAtTheSameTime) {
@@ -2096,6 +1980,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       ServerMigrationProtocol::SYNCHRONIZED_SYMMETRIC);
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+
   auto clientStateUpdateCallback =
       std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
   auto serverMigrationEventCallbackServerSide =
@@ -2111,6 +1996,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       folly::SocketAddress("127.2.2.2", 50002);
   folly::SocketAddress thirdClientAddress =
       folly::SocketAddress("127.3.3.3", 50003);
+
   auto serverMigrationEventCallbackFirstClient =
       std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
   auto serverMigrationEventCallbackSecondClient =
@@ -2146,18 +2032,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
-
-  auto waitForClientConnection =
-      [this](QuicServerMigrationIntegrationTestClient& client) {
-        client.setConnectionErrorTestPredicate(this->defaultTestPredicate);
-        client.start();
-        client.startDone_.wait();
-        client.send("ping");
-        EXPECT_TRUE(client.messageReceived.try_wait_for(this->batonTimeout));
-        client.messageReceived.reset();
-      };
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient firstClient(
       firstClientAddress.getAddressStr(),
@@ -2166,7 +2041,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackFirstClient);
-  waitForClientConnection(firstClient);
+  startClientAndWaitUntilHandshakeFinished(firstClient, defaultTestPredicate);
 
   QuicServerMigrationIntegrationTestClient secondClient(
       secondClientAddress.getAddressStr(),
@@ -2175,7 +2050,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackSecondClient);
-  waitForClientConnection(secondClient);
+  startClientAndWaitUntilHandshakeFinished(secondClient, defaultTestPredicate);
 
   QuicServerMigrationIntegrationTestClient thirdClient(
       thirdClientAddress.getAddressStr(),
@@ -2184,7 +2059,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackThirdClient);
-  waitForClientConnection(thirdClient);
+  startClientAndWaitUntilHandshakeFinished(thirdClient, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Second step: notify imminent server migration.
@@ -2338,11 +2213,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
             serverConnectionId == serverCids.at(secondClientAddress) ||
             serverConnectionId == serverCids.at(thirdClientAddress));
       });
-
-  firstClient.close();
-  secondClient.close();
-  thirdClient.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, firstClient, secondClient, thirdClient);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports) {
@@ -2351,6 +2222,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   QuicIPAddress quicIpServerMigrationAddress(serverMigrationAddress);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
+
   auto clientStateUpdateCallback =
       std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
   auto serverMigrationEventCallbackServerSide =
@@ -2365,6 +2237,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       folly::SocketAddress("127.2.2.2", 50002);
   folly::SocketAddress thirdClientAddress =
       folly::SocketAddress("127.3.3.3", 50003);
+
   auto serverMigrationEventCallbackFirstClient =
       std::make_shared<StrictMock<MockServerMigrationEventCallback>>();
   auto serverMigrationEventCallbackSecondClient =
@@ -2400,20 +2273,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
-
-  auto waitForClientConnection =
-      [this](
-          QuicServerMigrationIntegrationTestClient& client,
-          std::function<void(quic::QuicError)> testPredicate) {
-        client.setConnectionErrorTestPredicate(std::move(testPredicate));
-        client.start();
-        client.startDone_.wait();
-        client.send("ping");
-        EXPECT_TRUE(client.messageReceived.try_wait_for(this->batonTimeout));
-        client.messageReceived.reset();
-      };
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient firstClient(
       firstClientAddress.getAddressStr(),
@@ -2422,7 +2282,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackFirstClient);
-  waitForClientConnection(firstClient, defaultTestPredicate);
+  startClientAndWaitUntilHandshakeFinished(firstClient, defaultTestPredicate);
 
   QuicServerMigrationIntegrationTestClient secondClient(
       secondClientAddress.getAddressStr(),
@@ -2431,7 +2291,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackSecondClient);
-  waitForClientConnection(secondClient, serverMigratedAbruptlyTestPredicate);
+  startClientAndWaitUntilHandshakeFinished(
+      secondClient, serverMigratedAbruptlyTestPredicate);
 
   QuicServerMigrationIntegrationTestClient thirdClient(
       thirdClientAddress.getAddressStr(),
@@ -2440,7 +2301,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackThirdClient);
-  waitForClientConnection(thirdClient, serverMigratedAbruptlyTestPredicate);
+  startClientAndWaitUntilHandshakeFinished(
+      thirdClient, serverMigratedAbruptlyTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Second step: notify imminent server migration only to the transport
@@ -2575,20 +2437,18 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       .WillRepeatedly([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId, serverCids.at(firstClientAddress));
       });
-
-  firstClient.close();
-  secondClient.close();
-  thirdClient.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, firstClient, secondClient, thirdClient);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferentProtocols) {
   // Migration addresses.
   folly::SocketAddress firstServerMigrationAddress("127.0.1.1", 6000);
   QuicIPAddress firstQuicIpServerMigrationAddress(firstServerMigrationAddress);
+
   folly::SocketAddress secondServerMigrationAddress("127.0.2.2", 7000);
   QuicIPAddress secondQuicIpServerMigrationAddress(
       secondServerMigrationAddress);
+
   folly::SocketAddress thirdServerMigrationAddress("127.0.3.3", 8000);
   QuicIPAddress thirdQuicIpServerMigrationAddress(thirdServerMigrationAddress);
   ASSERT_NE(
@@ -2635,8 +2495,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -2645,13 +2504,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify the first imminent server migration using the Explicit protocol.
@@ -2774,6 +2627,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackServerSide.get());
 
+  // Test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -2845,6 +2699,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
   Mock::VerifyAndClearExpectations(
       serverMigrationEventCallbackServerSide.get());
 
+  // Test reachability.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -2855,8 +2710,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigrations) {
@@ -2876,6 +2730,8 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
   // come back to the original server address.
   folly::SocketAddress firstServerMigrationAddress("127.1.1.3", 8910);
   folly::SocketAddress secondServerMigrationAddress(serverIP, serverPort);
+  ASSERT_NE(
+      firstServerMigrationAddress, folly::SocketAddress(serverIP, serverPort));
 
   auto clientStateUpdateCallback =
       std::make_shared<StrictMock<MockClientStateUpdateCallback>>();
@@ -2922,8 +2778,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide,
       poolMigrationAddresses);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -2932,16 +2787,11 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
 
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
-
-  // Send a second message to be sure that the acknowledgements for the pool
-  // migration addresses, if present, are received by the server.
+  // Send a message after the handshake is finished, to be sure that the
+  // acknowledgements for the POOL_MIGRATION_ADDRESS frames are received
+  // by the server.
   client.send("ping");
   EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
   client.messageReceived.reset();
@@ -2954,14 +2804,14 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
 
   // Before starting the migration, wait a bit to be sure that the ACK for the
   // echo message is received by the server. This avoids a particular case where
-  // the call to onNetworkSwitch() happens before the server receives the ACK,
+  // the call to onNetworkSwitch() happens before the server receives this ACK,
   // causing a PTO in the server just after the migration. Due to the PTO, the
   // server sends a PING message from the new address, right in the middle of
   // the migration probing done by the client, concluding it and forcing the
   // client to send a PATH_CHALLENGE. This behaviour is correct and satisfies
   // the requirements of the Pool of Addresses protocol, but "hides" the
   // migration probing in the network traces, so it is better to avoid it in
-  // this context. Note that the test succeeds even if the waiting is removed.
+  // this context. Note that the test still succeeds if the wait is removed.
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Notify the first imminent server migration.
@@ -3086,8 +2936,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigrations) {
@@ -3129,8 +2978,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigratio
       serverSupportedProtocols,
       clientStateUpdateCallback,
       serverMigrationEventCallbackServerSide);
-  server.start();
-  server.server->waitUntilInitialized();
+  startServerAndWaitUntilInitialized(server);
 
   QuicServerMigrationIntegrationTestClient client(
       clientIP,
@@ -3139,13 +2987,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigratio
       serverPort,
       clientSupportedProtocols,
       serverMigrationEventCallbackClientSide);
-  client.setConnectionErrorTestPredicate(defaultTestPredicate);
-  client.start();
-  client.startDone_.wait();
-
-  client.send("ping");
-  EXPECT_TRUE(client.messageReceived.try_wait_for(batonTimeout));
-  client.messageReceived.reset();
+  startClientAndWaitUntilHandshakeFinished(client, defaultTestPredicate);
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
@@ -3243,8 +3085,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigratio
       .WillOnce([&](ConnectionId serverConnectionId) {
         EXPECT_EQ(serverConnectionId.hex(), serverCidHex);
       });
-  client.close();
-  server.server->shutdown();
+  shutdownServerAndClients(server, client);
 }
 
 } // namespace test
