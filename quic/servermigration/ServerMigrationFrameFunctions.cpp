@@ -841,6 +841,12 @@ void handleSymmetricMigration(
   connectionState.peerAddress = peerAddress;
   connectionState.serverMigrationState.migrationInProgress = true;
 
+  // Reset congestion controller.
+  auto congestionRttState = moveCurrentCongestionAndRttState(connectionState);
+  connectionState.serverMigrationState.previousCongestionAndRttStates
+      .emplace_back(std::move(congestionRttState));
+  resetCongestionAndRttState(connectionState);
+
   // Start path validation. The retransmission of PATH_CHALLENGE frames
   // is done automatically when a packet is marked as lost.
   uint64_t pathData;
@@ -867,6 +873,12 @@ void handleSynchronizedSymmetricMigration(
 
   // Change the peer address.
   connectionState.peerAddress = peerAddress;
+
+  // Reset congestion controller.
+  auto congestionRttState = moveCurrentCongestionAndRttState(connectionState);
+  connectionState.serverMigrationState.previousCongestionAndRttStates
+      .emplace_back(std::move(congestionRttState));
+  resetCongestionAndRttState(connectionState);
 
   // Start path validation. The retransmission of PATH_CHALLENGE frames
   // is done automatically when a packet is marked as lost.

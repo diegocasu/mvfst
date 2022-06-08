@@ -3134,15 +3134,31 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithMi
   folly::SocketAddress serverNewAddress("127.0.0.1", 5000);
   PacketNum packetNumber = 0;
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.negotiator);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState);
   ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
   EXPECT_THROW(
       maybeDetectSymmetricMigration(
           clientState, serverNewAddress, packetNumber),
       QuicTransportException);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPathValidationAlreadyStarted) {
@@ -3162,10 +3178,22 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPa
       clientState.serverMigrationState.protocolState->asSymmetricClientState();
   protocolState->pathValidationStarted = true;
 
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 
   maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_NE(serverNewAddress, clientState.peerAddress);
@@ -3176,6 +3204,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPa
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithoutProtocolState) {
@@ -3188,12 +3224,21 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithou
   enableServerMigrationClientSide();
   doNegotiation();
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.largestProcessedPacketNumber);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState);
   ASSERT_FALSE(clientState.serverMigrationState.migrationInProgress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
   maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   ASSERT_TRUE(
@@ -3208,6 +3253,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithou
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithProtocolStateAlreadyPresent) {
@@ -3224,9 +3277,18 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPr
   clientState.serverMigrationState.migrationInProgress = false;
   clientState.serverMigrationState.largestProcessedPacketNumber = packetNumber;
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
   maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
@@ -3239,6 +3301,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSymmetricMigrationWithPr
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState()
           ->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigratedAfterSymmetricMigrationDetected) {
@@ -3267,6 +3337,16 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
       packetNumberMigration);
   ASSERT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState());
+  ASSERT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
       clientState,
@@ -3281,6 +3361,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
       packetNumberMigration);
   EXPECT_TRUE(
       clientState.serverMigrationState.protocolState->asSymmetricClientState());
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigrationWithMigrationDisabled) {
@@ -3292,13 +3380,29 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMig
   clientState.serverMigrationState.protocolState =
       SynchronizedSymmetricClientState();
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.serverMigrationState.negotiator);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
   EXPECT_THROW(
       maybeDetectSymmetricMigration(
           clientState, serverNewAddress, packetNumber),
       QuicTransportException);
+  EXPECT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigrationWithPathValidationAlreadyStarted) {
@@ -3321,9 +3425,21 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMig
                            ->asSynchronizedSymmetricClientState();
   protocolState->pathValidationStarted = true;
 
+  clientState.serverMigrationState.previousCongestionAndRttStates.emplace_back(
+      CongestionAndRttState());
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 
   maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_NE(serverNewAddress, clientState.peerAddress);
@@ -3333,6 +3449,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMig
   EXPECT_EQ(
       clientState.serverMigrationState.largestProcessedPacketNumber.value(),
       packetNumber);
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMigration) {
@@ -3352,12 +3476,21 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMig
   clientState.serverMigrationState.protocolState =
       SynchronizedSymmetricClientState();
 
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+
   ASSERT_NE(serverNewAddress, clientState.peerAddress);
   ASSERT_FALSE(clientState.pendingEvents.pathChallenge);
   ASSERT_FALSE(clientState.pathValidationLimiter);
   ASSERT_FALSE(clientState.serverMigrationState.protocolState
                    ->asSynchronizedSymmetricClientState()
                    ->pathValidationStarted);
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
+  ASSERT_TRUE(
+      clientState.serverMigrationState.previousCongestionAndRttStates.empty());
 
   maybeDetectSymmetricMigration(clientState, serverNewAddress, packetNumber);
   EXPECT_EQ(clientState.peerAddress, serverNewAddress);
@@ -3369,6 +3502,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestDetectSynchronizedSymmetricMig
   EXPECT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState()
                   ->pathValidationStarted);
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+  EXPECT_EQ(clientState.lossState.srtt, 0us);
+  EXPECT_EQ(clientState.lossState.lrtt, 0us);
+  EXPECT_EQ(clientState.lossState.rttvar, 0us);
+  EXPECT_EQ(clientState.lossState.mrtt, kDefaultMinRtt);
+  EXPECT_FALSE(clientState.congestionController->isAppLimited());
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigratedAfterSynchronizedSymmetricMigrationDetected) {
@@ -3403,6 +3544,16 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
       packetNumberMigration);
   ASSERT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState());
+  ASSERT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
+
+  clientState.lossState.srtt = 10us;
+  clientState.lossState.lrtt = 20us;
+  clientState.lossState.rttvar = 30us;
+  clientState.lossState.mrtt = 40us;
+  clientState.congestionController->setAppIdle(true, TimePoint::clock::now());
+  ASSERT_TRUE(clientState.congestionController->isAppLimited());
 
   EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
       clientState,
@@ -3415,6 +3566,14 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestReceiveOutOfOrderServerMigrate
       packetNumberMigration);
   EXPECT_TRUE(clientState.serverMigrationState.protocolState
                   ->asSynchronizedSymmetricClientState());
+  EXPECT_EQ(clientState.lossState.srtt, 10us);
+  EXPECT_EQ(clientState.lossState.lrtt, 20us);
+  EXPECT_EQ(clientState.lossState.rttvar, 30us);
+  EXPECT_EQ(clientState.lossState.mrtt, 40us);
+  EXPECT_TRUE(clientState.congestionController->isAppLimited());
+  EXPECT_EQ(
+      clientState.serverMigrationState.previousCongestionAndRttStates.size(),
+      1);
 }
 
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestEndServerMigrationClientSide) {
