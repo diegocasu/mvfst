@@ -1030,7 +1030,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   QuicIPAddress quicIpServerMigrationAddress(serverMigrationAddress);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
@@ -1068,7 +1068,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestExplicitProtocolMigration) {
       serverMigrationEventCallbackServerSide.get());
 
   // Start the migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(Exactly(1))
@@ -1205,7 +1205,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
       .Times(0);
   EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationReady)
@@ -1222,7 +1222,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestPoolOfAddressesProtocolMigration)
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
 
   // Start the migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(AtLeast(1))
@@ -1315,7 +1315,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
 
@@ -1336,7 +1336,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSymmetricProtocolMigration) {
       serverMigrationEventCallbackServerSide.get());
 
   // Start the migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(*serverMigrationEventCallbackClientSide, onServerMigratedReceived)
       .Times(AtMost(1));
   EXPECT_CALL(
@@ -1427,7 +1427,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   folly::SocketAddress serverMigrationAddress("127.0.1.1", 6000);
   ASSERT_NE(serverMigrationAddress, folly::SocketAddress(serverIP, serverPort));
 
@@ -1466,7 +1466,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSynchronizedSymmetricProtocolMigr
       serverMigrationEventCallbackServerSide.get());
 
   // Start the migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(*serverMigrationEventCallbackClientSide, onServerMigratedReceived)
       .Times(AtMost(1));
   EXPECT_CALL(
@@ -1639,7 +1639,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   folly::SocketAddress serverMigrationAddress(serverIP, serverPort + 1);
   ASSERT_EQ(serverMigrationAddress.getAddressStr(), serverIP);
   ASSERT_NE(serverMigrationAddress.getPort(), 0);
@@ -1662,7 +1662,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateChangingOnlyThePort) {
       serverMigrationEventCallbackServerSide.get());
 
   // Start the migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(*serverMigrationEventCallbackClientSide, onServerMigratedReceived)
       .Times(AtMost(1));
   EXPECT_CALL(
@@ -1811,7 +1811,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
   // 1) the Explicit protocol for the first client;
   // 2) the Symmetric protocol for the second client;
   // 3) the Synchronized Symmetric protocol for the third client.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   std::atomic<int> nServerTransportsReady = 0;
 
   QuicServer::ServerMigrationSettings migrationSettings;
@@ -1875,7 +1875,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithDiff
       serverMigrationEventCallbackServerSide.get());
 
   // Third step: start the server migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   std::atomic<int> nServerTransportsMigrated = 0;
 
   EXPECT_CALL(
@@ -2063,7 +2063,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Second step: notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   std::atomic<int> nServerTransportsReady = 0;
 
   EXPECT_CALL(
@@ -2128,7 +2128,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateMultipleTransportsWithTheS
       serverMigrationEventCallbackServerSide.get());
 
   // Third step: start the server migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   std::atomic<int> nServerTransportsMigrated = 0;
 
   EXPECT_CALL(
@@ -2308,7 +2308,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
   // Second step: notify imminent server migration only to the transport
   // managing the first client. The other two transports should close the
   // connection.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   std::atomic<int> nServerTransportsReady = 0;
   QuicServer::ServerMigrationSettings migrationSettings;
   migrationSettings[serverCids.at(firstClientAddress)] = std::make_pair(
@@ -2372,7 +2372,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestMigrateOnlyASubsetOfTheTransports
       serverMigrationEventCallbackServerSide.get());
 
   // Third step: start the server migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
 
   EXPECT_CALL(
       *serverMigrationEventCallbackFirstClient, onServerMigrationProbingStarted)
@@ -2508,7 +2508,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify the first imminent server migration using the Explicit protocol.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
 
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationReceived)
@@ -2545,7 +2545,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfMigrationsWithDifferent
       serverMigrationEventCallbackServerSide.get());
 
   // Start the first migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(Exactly(1))
@@ -2815,7 +2815,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Notify the first imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationFailed)
       .Times(0);
   EXPECT_CALL(*serverMigrationEventCallbackServerSide, onServerMigrationReady)
@@ -2832,7 +2832,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestSequenceOfPoolOfAddressesMigratio
   Mock::VerifyAndClearExpectations(&serverMigrationEventCallbackServerSide);
 
   // Start the first migration.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(AtLeast(1))
@@ -2991,7 +2991,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigratio
   Mock::VerifyAndClearExpectations(clientStateUpdateCallback.get());
 
   // Notify imminent server migration.
-  folly::Baton serverMigrationReadyBaton;
+  folly::fibers::Baton serverMigrationReadyBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationReceived)
       .Times(Exactly(1))
@@ -3025,7 +3025,7 @@ TEST_F(QuicServerMigrationIntegrationTest, TestConcurrentClientAndServerMigratio
       serverMigrationEventCallbackServerSide.get());
 
   // Start both the client and server migrations.
-  folly::Baton serverMigrationCompletedBaton;
+  folly::fibers::Baton serverMigrationCompletedBaton;
   EXPECT_CALL(
       *serverMigrationEventCallbackClientSide, onServerMigrationProbingStarted)
       .Times(Exactly(1))
