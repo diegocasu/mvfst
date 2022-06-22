@@ -29,10 +29,10 @@ std::string QuicServerMigrationNegotiator::supportedProtocolsToString() {
   folly::fbstring output;
   for (const auto& protocol : supportedProtocols_) {
     if (output.empty()) {
-      output = folly::fbstring(serverMigrationProtocolString(protocol));
+      output = folly::fbstring(serverMigrationProtocolToString(protocol));
     } else {
       output = output + ", " +
-          folly::fbstring(serverMigrationProtocolString(protocol));
+          folly::fbstring(serverMigrationProtocolToString(protocol));
     }
   }
   return output.toStdString();
@@ -45,10 +45,10 @@ std::string QuicServerMigrationNegotiator::negotiatedProtocolsToString() {
   folly::fbstring output;
   for (const auto& protocol : negotiatedProtocols_.value()) {
     if (output.empty()) {
-      output = folly::fbstring(serverMigrationProtocolString(protocol));
+      output = folly::fbstring(serverMigrationProtocolToString(protocol));
     } else {
       output = output + ", " +
-          folly::fbstring(serverMigrationProtocolString(protocol));
+          folly::fbstring(serverMigrationProtocolToString(protocol));
     }
   }
   return output.toStdString();

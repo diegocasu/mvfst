@@ -155,7 +155,7 @@ folly::StringPiece readNoReadReasonString(NoReadReason reason) {
   folly::assume_unreachable();
 }
 
-folly::StringPiece serverMigrationProtocolString(
+folly::StringPiece serverMigrationProtocolToString(
     ServerMigrationProtocol protocol) {
   switch (protocol) {
     case ServerMigrationProtocol::EXPLICIT:
