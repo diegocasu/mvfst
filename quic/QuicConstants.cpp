@@ -170,4 +170,26 @@ folly::StringPiece serverMigrationProtocolToString(
   folly::assume_unreachable();
 }
 
+folly::StringPiece serverMigrationErrorToString(ServerMigrationError error) {
+  switch (error) {
+    case ServerMigrationError::MIGRATION_DISABLED:
+      return "Migration disabled";
+    case ServerMigrationError::HANDSHAKE_NOT_FINISHED:
+      return "Handshake not finished";
+    case ServerMigrationError::PROTOCOL_NOT_NEGOTIATED:
+      return "Protocol not negotiated";
+    case ServerMigrationError::MIGRATION_ALREADY_IN_PROGRESS:
+      return "Migration already in progress";
+    case ServerMigrationError::INVALID_ADDRESS:
+      return "Invalid address";
+    case ServerMigrationError::INVALID_STATE:
+      return "Invalid state";
+    case ServerMigrationError::EMPTY_POOL_MIGRATION_ADDRESSES:
+      return "Empty pool migration addresses";
+    case ServerMigrationError::POOL_MIGRATION_ADDRESSES_NOT_ACKNOWLEDGED:
+      return "Pool migration addresses not acknowledged";
+  }
+  folly::assume_unreachable();
+}
+
 } // namespace quic

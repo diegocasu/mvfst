@@ -679,4 +679,6 @@ enum class ServerMigrationError : uint16_t {
   POOL_MIGRATION_ADDRESSES_NOT_ACKNOWLEDGED,
 };
 
+folly::StringPiece serverMigrationErrorToString(ServerMigrationError error);
+
 } // namespace quic
