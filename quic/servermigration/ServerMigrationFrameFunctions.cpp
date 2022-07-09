@@ -965,6 +965,9 @@ void updateServerMigrationFrameOnPacketReceived(
           connectionState, *frame.asPoolMigrationAddressFrame());
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      if (peerAddress == connectionState.peerAddress) {
+        return;
+      }
       throwIfUnexpectedServerMigratedFrame(connectionState, peerAddress);
       handleServerMigratedFrame(connectionState);
       return;
