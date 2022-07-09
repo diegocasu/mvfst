@@ -1183,11 +1183,7 @@ void endServerMigration(
 
   // Update the largest processed server migration packet to
   // record the one that ended the migration.
-  if (packetNumber > connectionState.serverMigrationState
-                         .largestProcessedPacketNumber.value()) {
-    connectionState.serverMigrationState.largestProcessedPacketNumber =
-        packetNumber;
-  }
+  updateLargestProcessedPacketNumber(connectionState, packetNumber);
 
   if (connectionState.serverMigrationState.serverMigrationEventCallback) {
     connectionState.serverMigrationState.serverMigrationEventCallback
@@ -1212,11 +1208,7 @@ void endServerMigration(
 
   // Update the largest processed server migration acknowledgement to
   // record the one that ended the migration.
-  if (packetNumber > connectionState.serverMigrationState
-                         .largestProcessedPacketNumber.value()) {
-    connectionState.serverMigrationState.largestProcessedPacketNumber =
-        packetNumber;
-  }
+  updateLargestProcessedPacketNumber(connectionState, packetNumber);
 
   if (connectionState.serverMigrationState.serverMigrationEventCallback) {
     connectionState.serverMigrationState.serverMigrationEventCallback
