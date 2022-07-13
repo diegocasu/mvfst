@@ -1023,6 +1023,9 @@ void updateServerMigrationFrameOnPacketAckReceived(
           connectionState, *frame.asPoolMigrationAddressFrame());
       return;
     case QuicServerMigrationFrame::Type::ServerMigratedFrame:
+      if (!connectionState.serverMigrationState.protocolState) {
+        return;
+      }
       throwIfUnexpectedServerMigratedFrame(connectionState);
       handleServerMigratedFrameAck(connectionState);
       return;

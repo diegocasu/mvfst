@@ -2034,10 +2034,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSymmetricServ
   ASSERT_FALSE(serverState.serverMigrationState.protocolState);
   ASSERT_FALSE(serverState.serverMigrationState.largestProcessedPacketNumber);
 
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, packetNumber),
-      QuicTransportException);
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, packetNumber));
   EXPECT_FALSE(serverState.serverMigrationState.protocolState);
 }
 
@@ -2216,10 +2214,8 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestServerReceptionOfSynchronizedS
       packetNumber - 1;
   ASSERT_FALSE(serverState.serverMigrationState.protocolState);
 
-  EXPECT_THROW(
-      updateServerMigrationFrameOnPacketAckReceived(
-          serverState, serverMigratedFrame, packetNumber),
-      QuicTransportException);
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketAckReceived(
+      serverState, serverMigratedFrame, packetNumber));
   EXPECT_FALSE(serverState.serverMigrationState.protocolState);
 }
 
