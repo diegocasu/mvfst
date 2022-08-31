@@ -464,6 +464,14 @@ void handleExplicitServerMigrationFrame(
       (connectionState.peerAddress.getIPAddress().isV6() &&
        frame.address.getIPv6AddressAsSocketAddress() ==
            connectionState.peerAddress)) {
+    // If the client is already in the probing phase, ignore the frame, because
+    // the peer address has been updated to reflect the migration address.
+    if (connectionState.serverMigrationState.protocolState &&
+        connectionState.serverMigrationState.protocolState
+            ->asExplicitClientState()
+            ->probingInProgress) {
+      return;
+    }
     throw quic::QuicTransportException(
         "Received a SERVER_MIGRATION frame carrying the current "
         "address of the peer",

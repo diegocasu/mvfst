@@ -2337,6 +2337,44 @@ TEST_F(QuicServerMigrationFrameFunctionsTest, TestStartExplicitServerMigrationPr
   EXPECT_FALSE(clientState.congestionController->isAppLimited());
 }
 
+TEST_F(QuicServerMigrationFrameFunctionsTest, TestClientReceptionOfExplicitServerMigrationCarryingCurrentServerAddressDuringProbing) {
+  QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
+  auto peerAddressBeforeProbing = clientState.peerAddress;
+  ServerMigrationFrame serverMigrationFrame(migrationAddress);
+  PacketNum packetNumber = 2;
+
+  serverSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  clientSupportedProtocols.insert(ServerMigrationProtocol::EXPLICIT);
+  enableServerMigrationServerSide();
+  enableServerMigrationClientSide();
+  doNegotiation();
+
+  clientState.serverMigrationState.protocolState =
+      ExplicitClientState(migrationAddress);
+  auto protocolState =
+      clientState.serverMigrationState.protocolState->asExplicitClientState();
+  protocolState->probingInProgress = true;
+  protocolState->onServerMigrationProbingStartedNotified = true;
+  protocolState->probingFinished = false;
+  protocolState->serverAddressBeforeProbing = peerAddressBeforeProbing;
+  clientState.serverMigrationState.largestProcessedPacketNumber =
+      packetNumber - 1;
+  clientState.peerAddress = migrationAddress.getIPv4AddressAsSocketAddress();
+
+  ASSERT_NE(
+      migrationAddress.getIPv4AddressAsSocketAddress(),
+      peerAddressBeforeProbing);
+  ASSERT_EQ(
+      clientState.peerAddress,
+      serverMigrationFrame.address.getIPv4AddressAsSocketAddress());
+
+  EXPECT_NO_THROW(updateServerMigrationFrameOnPacketReceived(
+      clientState,
+      serverMigrationFrame,
+      packetNumber,
+      clientState.peerAddress));
+}
+
 TEST_F(QuicServerMigrationFrameFunctionsTest, TestUpdateExplicitServerMigrationProbingWhenProbingInProgress) {
   QuicIPAddress migrationAddress(folly::IPAddressV4("127.0.0.1"), 5000);
   auto peerAddressBeforeProbing = clientState.peerAddress;
