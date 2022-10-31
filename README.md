@@ -420,10 +420,8 @@ Tracking such events is useful to understand when the server becomes ready again
 
 ## Full example
 
-An example of server migration is available
-[here](https://github.com/diegocasu/proxygen/tree/main/proxygen/httpserver/samples/servermigration/app), where
-relocation is enabled by `CRIU`. The application was developed to carry out the performance evaluation reported in the
-thesis.
+An example of server migration is available [here](https://github.com/diegocasu/proxygen), where relocation is 
+enabled by `CRIU`. The application was developed to carry out the performance evaluation reported in the thesis.
 
 ## Build and test
 
